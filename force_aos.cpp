@@ -40,7 +40,8 @@ print256(v4df r) {
   printf("%.10f %.10f %.10f %.10f\n", a[0], a[1], a[2], a[3]);
 }
 //----------------------------------------------------------------------
-void print512(v8df r) {
+void
+print512(v8df r) {
   union {
     v8df r;
     double elem[8];
@@ -233,25 +234,28 @@ force_next(void) {
   }
 }
 //----------------------------------------------------------------------
-static inline v8df _mm512_load2_m256d(const double* hiaddr,
-                                      const double* loaddr) {
+static inline v8df
+_mm512_load2_m256d(const double* hiaddr,
+                   const double* loaddr) {
   v8df ret;
   ret = _mm512_insertf64x4(ret, _mm256_load_pd(loaddr), 0x0);
   ret = _mm512_insertf64x4(ret, _mm256_load_pd(hiaddr), 0x1);
   return ret;
 }
 //----------------------------------------------------------------------
-static inline void _mm512_store2_m256d(double* hiaddr,
-                                       double* loaddr,
-                                       const v8df& dat) {
+static inline void
+_mm512_store2_m256d(double* hiaddr,
+                    double* loaddr,
+                    const v8df& dat) {
   _mm256_store_pd(loaddr, _mm512_castpd512_pd256(dat));
   _mm256_store_pd(hiaddr, _mm512_extractf64x4_pd(dat, 0x1));
 }
 //----------------------------------------------------------------------
-static inline void transpose_4x4x2(v8df& va,
-                                   v8df& vb,
-                                   v8df& vc,
-                                   v8df& vd) {
+static inline void
+transpose_4x4x2(v8df& va,
+                v8df& vb,
+                v8df& vc,
+                v8df& vd) {
   v8df t_a = _mm512_unpacklo_pd(va, vb);
   v8df t_b = _mm512_unpackhi_pd(va, vb);
   v8df t_c = _mm512_unpacklo_pd(vc, vd);
@@ -263,13 +267,14 @@ static inline void transpose_4x4x2(v8df& va,
   vd = _mm512_permutex2var_pd(t_b, _mm512_set_epi64(0xf, 0xe, 0x7, 0x6, 0xb, 0xa, 0x3, 0x2), t_d);
 }
 //----------------------------------------------------------------------
-static inline void transpose_4x4x2(const v8df& va,
-                                   const v8df& vb,
-                                   const v8df& vc,
-                                   const v8df& vd,
-                                   v8df& vx,
-                                   v8df& vy,
-                                   v8df& vz) {
+static inline void
+transpose_4x4x2(const v8df& va,
+                const v8df& vb,
+                const v8df& vc,
+                const v8df& vd,
+                v8df& vx,
+                v8df& vy,
+                v8df& vz) {
   v8df t_a = _mm512_unpacklo_pd(va, vb);
   v8df t_b = _mm512_unpackhi_pd(va, vb);
   v8df t_c = _mm512_unpacklo_pd(vc, vd);
