@@ -262,6 +262,27 @@ _mm512_store2_m256d(double* hiaddr,
 }
 //----------------------------------------------------------------------
 static inline void
+_mm256_xyz_store_pd(double* addr,
+                    const v4df& dat) {
+  _mm256_maskstore_pd(addr,
+                      _mm256_set_epi64x(0x0,
+                                        0xffffffffffffffff,
+                                        0xffffffffffffffff,
+                                        0xffffffffffffffff),
+                      dat);
+}
+
+static inline void
+_mm512_xyz_store2_m256d(double* hiaddr,
+                        double* loaddr,
+                        const v8df& dat) {
+  _mm256_xyz_store_pd(loaddr,
+                      _mm512_castpd512_pd256(dat));
+  _mm256_xyz_store_pd(hiaddr,
+                      _mm512_extractf64x4_pd(dat, 0x1));
+}
+//----------------------------------------------------------------------
+static inline void
 transpose_4x4x2(v8df& va,
                 v8df& vb,
                 v8df& vc,
@@ -363,7 +384,11 @@ force_intrin_v1(void) {
 
     // store
     vpi += static_cast<v8df>(_mm512_castpd256_pd512(_mm256_load_pd(&p[i].x)));
+#ifdef USE_VEC3
+    _mm256_xyz_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+#else
     _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+#endif
 
     for (int k = (np / 8) * 8; k < np; k++) {
       const auto j = sorted_list[kp + k];
@@ -451,16 +476,33 @@ force_intrin_v2(void) {
       vpi    += vdf_hd * vdq_hd;
       vpj_hd -= vdf_hd * vdq_hd;
 
+#ifdef USE_VEC3
+      _mm512_xyz_store2_m256d(&p[j_e].x, &p[j_a].x, vpj_ea);
+      _mm512_xyz_store2_m256d(&p[j_f].x, &p[j_b].x, vpj_fb);
+      _mm512_xyz_store2_m256d(&p[j_g].x, &p[j_c].x, vpj_gc);
+      _mm512_xyz_store2_m256d(&p[j_h].x, &p[j_d].x, vpj_hd);
+#else
       _mm512_store2_m256d(&p[j_e].x, &p[j_a].x, vpj_ea);
       _mm512_store2_m256d(&p[j_f].x, &p[j_b].x, vpj_fb);
       _mm512_store2_m256d(&p[j_g].x, &p[j_c].x, vpj_gc);
       _mm512_store2_m256d(&p[j_h].x, &p[j_d].x, vpj_hd);
+#endif
     }
     vpi = _mm512_add_pd(vpi,
                         _mm512_permutexvar_pd(_mm512_set_epi64(0x3, 0x2, 0x1, 0x0, 0x7, 0x6, 0x5, 0x4),
                                               vpi));
     vpi = _mm512_add_pd(vpi, _mm512_castpd256_pd512(_mm256_load_pd(&p[i].x)));
+
+#ifdef USE_VEC3
+    _mm256_maskstore_pd(&p[i].x,
+                        _mm256_set_epi64x(0x0,
+                                          0xffffffffffffffff,
+                                          0xffffffffffffffff,
+                                          0xffffffffffffffff),
+                        _mm512_castpd512_pd256(vpi));
+#else
     _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+#endif
 
     for (int k = (np / 8) * 8; k < np; k++) {
       const auto j = sorted_list[kp + k];
@@ -547,9 +589,6 @@ main(void) {
   measure(&force_intrin_v1, "intrin_v1");
   print_result();
 #elif INTRIN_v2
-#ifdef USE_VEC3
-  #error "USE_VEC3 is not supported!"
-#endif
   measure(&force_intrin_v2, "intrin_v2");
   print_result();
 #else
