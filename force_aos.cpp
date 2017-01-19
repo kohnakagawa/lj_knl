@@ -8,6 +8,8 @@
 #include <x86intrin.h>
 #include <sys/stat.h>
 //----------------------------------------------------------------------
+#define USE_VEC3
+//----------------------------------------------------------------------
 const double density = 1.0;
 const int N = 400000;
 const int MAX_PAIRS = 30 * N;
@@ -15,8 +17,16 @@ double L = 50.0;
 const double dt = 0.001;
 
 struct double4 {double x, y, z, w;};
-double4* __restrict q = nullptr;
-double4* __restrict p = nullptr;
+struct double3 {double x, y, z;};
+
+#ifdef USE_VEC3
+typedef double3 Vec;
+#else
+typedef double4 Vec;
+#endif
+
+Vec* __restrict q = nullptr;
+Vec* __restrict p = nullptr;
 
 int particle_number = 0;
 int number_of_pairs = 0;
@@ -122,8 +132,8 @@ makepair(void) {
 //----------------------------------------------------------------------
 void
 allocate(void) {
-  posix_memalign((void**)(&q), 64, sizeof(double4) * N);
-  posix_memalign((void**)(&p), 64, sizeof(double4) * N);
+  posix_memalign((void**)(&q), 64, sizeof(Vec) * N);
+  posix_memalign((void**)(&p), 64, sizeof(Vec) * N);
 }
 //----------------------------------------------------------------------
 void
@@ -291,6 +301,8 @@ force_intrin_v1(void) {
   const v8df vc48  = _mm512_set1_pd(48.0 * dt);
   const v8df vcl2  = _mm512_set1_pd(CL2);
   const v8df vzero = _mm512_setzero_pd();
+  const v8si vscale = _mm256_set1_epi32(sizeof(Vec) / sizeof(double));
+
   for (int i = 0; i < N; i++) {
     v8df vqxi = _mm512_set1_pd(q[i].x);
     v8df vqyi = _mm512_set1_pd(q[i].y);
@@ -304,7 +316,7 @@ force_intrin_v1(void) {
     const int kp = pointer[i];
     for (int k = 0; k < (np / 8) * 8; k += 8) {
       v8si vindex = _mm256_lddqu_si256(reinterpret_cast<__m256i*>(&sorted_list[kp + k]));
-      vindex = _mm256_slli_epi32(vindex, 2);
+      vindex *= vscale;
 
       v8df vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
       v8df vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
@@ -535,6 +547,9 @@ main(void) {
   measure(&force_intrin_v1, "intrin_v1");
   print_result();
 #elif INTRIN_v2
+#ifdef USE_VEC3
+  #error "USE_VEC3 is not supported!"
+#endif
   measure(&force_intrin_v2, "intrin_v2");
   print_result();
 #else
