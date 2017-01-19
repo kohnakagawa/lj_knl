@@ -378,8 +378,10 @@ force_intrin_v1(void) {
     // vpwi = {vpid, vpih}
 
     v8df vpi_hilo = vpxi + vpyi + vpzi + vpwi;
-    v8df vpi_lohi = _mm512_permutexvar_pd(_mm512_set_epi64(0x3, 0x2, 0x1, 0x0, 0x7, 0x6, 0x5, 0x4),
-                                          vpi_hilo);
+    v8df vpi_lohi = _mm512_castsi512_pd(
+                                        _mm512_alignr_epi64(_mm512_castpd_si512(vpi_hilo),
+                                                            _mm512_castpd_si512(vpi_hilo),
+                                                            4));
     v8df vpi = vpi_hilo + vpi_lohi;
 
     // store
