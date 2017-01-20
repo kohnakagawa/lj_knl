@@ -1,4 +1,4 @@
-TARGET= aos.out aos_pair.out aos_next.out aos_intrin_v1.out aos_intrin_v2.out soa.out soa_pair.out soa_next.out soa_intrin_v1.out knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out
+TARGET= aos.out aos_pair.out aos_next.out aos_sorted.out aos_intrin_v1.out aos_intrin_v2.out soa.out soa_pair.out soa_next.out soa_intrin_v1.out knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out aos_intrin_v1_reactless.out aos_intrin_v2_reactless.out
 ASM = force_aos.s force_soa.s force_aos_loop_dep.s force_soa_loop_dep.s
 
 all: $(TARGET) $(ASM)
@@ -12,16 +12,25 @@ aos.out: force_aos.cpp
 	icpc -O3 -xMIC-AVX512 -std=c++11 $< -o $@
 
 aos_pair.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DWITH_REACT -DPAIR $< -o $@
+
+aos_sorted.out: force_aos.cpp
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DSORTED $< -o $@
 
 aos_next.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DNEXT $< -o $@
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DWITH_REACT -DNEXT $< -o $@
 
 aos_intrin_v1.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 $< -o $@
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -DWITH_REACT -qopenmp $< -o $@
 
 aos_intrin_v2.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 $< -o $@
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 -DWITH_REACT -qopenmp $< -o $@
+
+aos_intrin_v1_reactless.out: force_aos.cpp
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -qopenmp $< -o $@
+
+aos_intrin_v2_reactless.out: force_aos.cpp
+	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 -qopenmp $< -o $@
 
 soa.out: force_soa.cpp
 	icpc -O3 -xMIC-AVX512 -std=c++11 $< -o $@
