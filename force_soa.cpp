@@ -479,7 +479,7 @@ measure(void(*pfunc)(), const char *name) {
   }
   const auto end = std::chrono::system_clock::now();
   const long dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg).count();
-  fprintf(stderr, "N=%d, %s %ld [microsec]\n", particle_number, name, dur);
+  fprintf(stderr, "N=%d, %s %ld [ms]\n", particle_number, name, dur);
 }
 //----------------------------------------------------------------------
 void
