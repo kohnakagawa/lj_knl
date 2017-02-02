@@ -6,67 +6,55 @@
 #include <random>
 #include <cmath>
 #include <chrono>
-#include <vector>
 #include <x86intrin.h>
 #include <sys/stat.h>
 #include <omp.h>
 //----------------------------------------------------------------------
-#define USE_VEC3
-//----------------------------------------------------------------------
 const double density = 1.0;
 const int N = 400000;
-#ifdef WITH_REACT
-const int MAX_PAIRS = 30 * N;
-#else
+#ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
+#else
+const int MAX_PAIRS = 30 * N;
 #endif
 const double L = 50.0;
 const double dt = 0.001;
 
-#ifdef WITH_REACT
-const char* pairlist_cache_file_name = "pair.dat";
+#ifdef REACTLESS
+const char* pairlist_cache_file_name = "pair_all.dat";
 #else
-const char* pairlist_cache_file_name = "pair_reactless.dat";
+const char* pairlist_cache_file_name = "pair.dat";
 #endif
 
 struct double4 {double x, y, z, w;};
-struct double3 {double x, y, z;};
-
-#ifdef USE_VEC3
-typedef double3 Vec;
-#else
 typedef double4 Vec;
-#endif
 
-Vec* __restrict q = nullptr;
-Vec* __restrict p = nullptr;
+Vec* q = nullptr;
+Vec* p = nullptr;
 
 int particle_number = 0;
 int number_of_pairs = 0;
-int number_of_partners[N];
+int* number_of_partners = nullptr;
 int i_particles[MAX_PAIRS];
 int j_particles[MAX_PAIRS];
-int32_t pointer[N], pointer2[N];
-int sorted_list[MAX_PAIRS];
+int32_t* pointer = nullptr;
+int32_t pointer2[N];
+int* sorted_list = nullptr;
 
 const double CUTOFF_LENGTH = 3.0;
 const double SEARCH_LENGTH = 3.3;
 const double CL2 = CUTOFF_LENGTH * CUTOFF_LENGTH;
 //----------------------------------------------------------------------
-typedef double v4df __attribute__((vector_size(32)));
-typedef double v8df __attribute__((vector_size(64)));
-typedef int32_t v8si __attribute__((vector_size(32)));
-//----------------------------------------------------------------------
 void
-print256(v4df r) {
+print256(__m256d r) {
   double *a = (double*)(&r);
   printf("%.10f %.10f %.10f %.10f\n", a[0], a[1], a[2], a[3]);
 }
 //----------------------------------------------------------------------
 void
-print512(v8df r) {
+print512(__m512d r) {
   union {
-    v8df r;
+    __m512d r;
     double elem[8];
   } tmp;
   tmp.r = r;
@@ -88,7 +76,10 @@ add_particle(double x, double y, double z) {
 void
 register_pair(int index1, int index2) {
   int i, j;
-#ifdef WITH_REACT
+#ifdef REACTLESS
+  i = index1;
+  j = index2;
+#else
   if (index1 < index2) {
     i = index1;
     j = index2;
@@ -96,9 +87,6 @@ register_pair(int index1, int index2) {
     i = index2;
     j = index1;
   }
-#else
-  i = index1;
-  j = index2;
 #endif
   i_particles[number_of_pairs] = i;
   j_particles[number_of_pairs] = j;
@@ -135,13 +123,13 @@ makepair(void) {
   for (int i = 0; i < pn; i++) {
     number_of_partners[i] = 0;
   }
-#ifdef WITH_REACT
-  for (int i = 0; i < particle_number - 1; i++) {
-    for (int j = i + 1; j < particle_number; j++) {
-#else
+#ifdef REACTLESS
   for (int i = 0; i < particle_number; i++) {
     for (int j = 0; j < particle_number; j++) {
       if (i == j) continue;
+#else
+  for (int i = 0; i < particle_number - 1; i++) {
+    for (int j = i + 1; j < particle_number; j++) {
 #endif
       const double dx = q[i].x - q[j].x;
       const double dy = q[i].y - q[j].y;
@@ -155,15 +143,58 @@ makepair(void) {
 }
 //----------------------------------------------------------------------
 void
+first_touch(void) {
+  const int est_N = 119164;
+#ifdef REACTLESS
+  const int est_pair_num = 2 * 7839886;
+#else
+  const int est_pair_num = 7839886;
+#endif
+
+#pragma omp parallel for
+  for (int i = 0; i < est_N; i++) {
+    q[i].x = q[i].y = q[i].z = q[i].w = 0.0;
+    p[i].x = p[i].y = p[i].z = p[i].w = 0.0;
+    number_of_partners[i] = pointer[i] = 0;
+  }
+
+#pragma omp parallel for
+  for (int i = 0; i < est_pair_num; i++) {
+    sorted_list[i] = 0;
+  }
+}
+//----------------------------------------------------------------------
+void
 allocate(void) {
   posix_memalign((void**)(&q), 64, sizeof(Vec) * N);
   posix_memalign((void**)(&p), 64, sizeof(Vec) * N);
+
+  posix_memalign((void**)(&number_of_partners), 64, sizeof(int) * N);
+  posix_memalign((void**)(&pointer), 64, sizeof(int32_t) * N);
+  posix_memalign((void**)(&sorted_list), 64, sizeof(int32_t) * MAX_PAIRS);
+
+#ifdef _OPENMP
+  first_touch();
+#endif
+
+  std::fill(number_of_partners,
+            number_of_partners + N,
+            0);
+  std::fill(pointer,
+            pointer + N,
+            0);
+  std::fill(sorted_list,
+            sorted_list + MAX_PAIRS,
+            0);
 }
 //----------------------------------------------------------------------
 void
 deallocate(void) {
   free(q);
   free(p);
+  free(number_of_partners);
+  free(pointer);
+  free(sorted_list);
 }
 //----------------------------------------------------------------------
 void
@@ -179,7 +210,7 @@ random_shfl() {
 //----------------------------------------------------------------------
 void
 init(void) {
-  const double s = 1.0 / pow(density * 0.25, 1.0 / 3.0);
+  const double s = 1.0 / std::pow(density * 0.25, 1.0 / 3.0);
   const double hs = s * 0.5;
   int sx = static_cast<int>(L / s);
   int sy = static_cast<int>(L / s);
@@ -206,25 +237,34 @@ init(void) {
 //----------------------------------------------------------------------
 void
 force_pair(void){
+#pragma omp parallel
+  {
+    const auto nps = number_of_pairs;
+#pragma omp for nowait
 #pragma novector
-  for(int k=0;k<number_of_pairs;k++){
-    const int i = i_particles[k];
-    const int j = j_particles[k];
-    double dx = q[j].x - q[i].x;
-    double dy = q[j].y - q[i].y;
-    double dz = q[j].z - q[i].z;
-    double r2 = (dx * dx + dy * dy + dz * dz);
-    if (r2 > CL2) continue;
-    double r6 = r2 * r2 * r2;
-    double df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
-    p[i].x += df * dx;
-    p[i].y += df * dy;
-    p[i].z += df * dz;
-#ifdef WITH_REACT
-    p[j].x -= df * dx;
-    p[j].y -= df * dy;
-    p[j].z -= df * dz;
-#endif
+    for (int k = 0; k < nps; k++) {
+      const int i = i_particles[k];
+      const int j = j_particles[k];
+      double dx = q[j].x - q[i].x;
+      double dy = q[j].y - q[i].y;
+      double dz = q[j].z - q[i].z;
+      double r2 = (dx * dx + dy * dy + dz * dz);
+      if (r2 > CL2) continue;
+      double r6 = r2 * r2 * r2;
+      double df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+#pragma omp atomic
+      p[i].x += df * dx;
+#pragma omp atomic
+      p[i].y += df * dy;
+#pragma omp atomic
+      p[i].z += df * dz;
+#pragma omp atomic
+      p[j].x -= df * dx;
+#pragma omp atomic
+      p[j].y -= df * dy;
+#pragma omp atomic
+      p[j].z -= df * dz;
+    }
   }
 }
 //----------------------------------------------------------------------
@@ -233,15 +273,13 @@ force_sorted(void) {
 #pragma omp parallel
   {
     const auto pn = particle_number;
-#pragma omp for schedule(static)
+#pragma omp for nowait
     for (int i = 0; i < pn; i++) {
       const auto qx_key = q[i].x;
       const auto qy_key = q[i].y;
       const auto qz_key = q[i].z;
       const auto np = number_of_partners[i];
-      double pfx = 0;
-      double pfy = 0;
-      double pfz = 0;
+      double pfx = 0, pfy = 0, pfz = 0;
       const auto kp = pointer[i];
 #pragma novector
       for (int k = 0; k < np; k++) {
@@ -256,77 +294,205 @@ force_sorted(void) {
         pfx += df*dx;
         pfy += df*dy;
         pfz += df*dz;
-#ifdef WITH_REACT
+#pragma omp atomic
         p[j].x -= df*dx;
+#pragma omp atomic
         p[j].y -= df*dy;
+#pragma omp atomic
         p[j].z -= df*dz;
-#endif
       } // end of k loop
+#pragma omp atomic
       p[i].x += pfx;
+#pragma omp atomic
       p[i].y += pfy;
+#pragma omp atomic
       p[i].z += pfz;
     } // end of i loop
   } // end of pragma omp for
 }
 //----------------------------------------------------------------------
 void
+force_sorted_reactless(void) {
+#pragma omp parallel
+  {
+    const auto pn = particle_number;
+#pragma omp for nowait
+    for (int i = 0; i < pn; i++) {
+      const auto qx_key = q[i].x;
+      const auto qy_key = q[i].y;
+      const auto qz_key = q[i].z;
+      const auto np = number_of_partners[i];
+      auto pfx = p[i].x, pfy = p[i].y, pfz = p[i].z;
+      const auto kp = pointer[i];
+#pragma novector
+      for (int k = 0; k < np; k++) {
+        const auto j = sorted_list[kp + k];
+        const auto dx = q[j].x - qx_key;
+        const auto dy = q[j].y - qy_key;
+        const auto dz = q[j].z - qz_key;
+        const auto r2 = (dx*dx + dy*dy + dz*dz);
+        if (r2 > CL2) continue;
+        const auto r6 = r2*r2*r2;
+        const auto df = ((24.0 * r6 - 48.0)/(r6 * r6 * r2)) * dt;
+        pfx += df*dx;
+        pfy += df*dy;
+        pfz += df*dz;
+      } // end of k loop
+      p[i].x = pfx;
+      p[i].y = pfy;
+      p[i].z = pfz;
+    } // end of i loop
+  } // end of pragma omp parallel
+}
+//----------------------------------------------------------------------
+// enum {
+//   NUM_SMT = 4,
+// };
+//----------------------------------------------------------------------
+/*void
+force_sorted_ht(void) {
+#pragma omp parallel
+  {
+    const auto tid       = omp_get_thread_num();
+    const auto n_threads = omp_get_num_threads();
+
+    const auto i_ptcl_id = tid / NUM_SMT;
+    const auto j_ptcl_id = tid % NUM_SMT;
+
+    const auto n_ptcl_in_th = (particle_number - 1) / (n_threads / NUM_SMT) + 1;
+    const auto beg_i = i_ptcl_id * n_ptcl_in_th;
+    auto end_i = (i_ptcl_id + 1) * n_ptcl_in_th;
+    if (end_i > particle_number) end_i = particle_number;
+
+    for (int i = beg_i; i < end_i; i++) {
+      const auto qx_key = q[i].x, qy_key = q[i].y, qz_key = q[i].z;
+      const auto np = number_of_partners[i];
+      double pfx = 0, pfy = 0, pfz = 0;
+      const auto kp = pointer[i];
+      int k = 0;
+#pragma novector
+      for (; k < (np / NUM_SMT) * NUM_SMT; k += NUM_SMT) {
+        const auto j = sorted_list[kp + k + j_ptcl_id];
+        const auto dx = q[j].x - qx_key;
+        const auto dy = q[j].y - qy_key;
+        const auto dz = q[j].z - qz_key;
+        const auto r2 = (dx*dx + dy*dy + dz*dz);
+        if (r2 <= CL2) {
+          const auto r6 = r2*r2*r2;
+          const auto df = ((24.0 * r6 - 48.0)/(r6 * r6 * r2)) * dt;
+          pfx += df*dx;
+          pfy += df*dy;
+          pfz += df*dz;
+#pragma omp atomic
+          p[j].x -= df*dx;
+#pragma omp atomic
+          p[j].y -= df*dy;
+#pragma omp atomic
+          p[j].z -= df*dz;
+        }
+      } // end of k loop
+
+      // remaining loop
+      if (j_ptcl_id < (np % NUM_SMT)) {
+        const auto j = sorted_list[kp + k + j_ptcl_id];
+        const auto dx = q[j].x - qx_key;
+        const auto dy = q[j].y - qy_key;
+        const auto dz = q[j].z - qz_key;
+        const auto r2 = (dx*dx + dy*dy + dz*dz);
+        if (r2 <= CL2) {
+          const auto r6 = r2*r2*r2;
+          const auto df = ((24.0 * r6 - 48.0)/(r6 * r6 * r2)) * dt;
+          pfx += df*dx;
+          pfy += df*dy;
+          pfz += df*dz;
+#pragma omp atomic
+          p[j].x -= df*dx;
+#pragma omp atomic
+          p[j].y -= df*dy;
+#pragma omp atomic
+          p[j].z -= df*dz;
+        }
+      } // end of remaining loop
+
+#pragma omp atomic
+      p[i].x += pfx;
+#pragma omp atomic
+      p[i].y += pfy;
+#pragma omp atomic
+      p[i].z += pfz;
+    } // end of i loop
+  } // end of pragma omp parallel
+  }*/
+//----------------------------------------------------------------------
+void
 force_next(void) {
-  const int pn = particle_number;
-  for (int i = 0; i < pn; i++) {
-    const double qx_key = q[i].x;
-    const double qy_key = q[i].y;
-    const double qz_key = q[i].z;
-    double pfx = 0;
-    double pfy = 0;
-    double pfz = 0;
-    const int kp = pointer[i];
-    int ja = sorted_list[kp];
-    double dxa = q[ja].x - qx_key;
-    double dya = q[ja].y - qy_key;
-    double dza = q[ja].z - qz_key;
-    double df = 0.0;
-    double dxb = 0.0, dyb = 0.0, dzb = 0.0;
-    int jb = 0;
+#pragma omp parallel
+  {
+    const int pn = particle_number;
+#pragma omp for nowait
+    for (int i = 0; i < pn; i++) {
+      const double qx_key = q[i].x;
+      const double qy_key = q[i].y;
+      const double qz_key = q[i].z;
+      double pfx = 0, pfy = 0, pfz = 0;
+      const int kp = pointer[i];
+      int ja = sorted_list[kp];
+      double dxa = q[ja].x - qx_key;
+      double dya = q[ja].y - qy_key;
+      double dza = q[ja].z - qz_key;
+      double df = 0.0;
+      double dxb = 0.0, dyb = 0.0, dzb = 0.0;
+      int jb = 0;
 
-    const int np = number_of_partners[i];
-    for (int k = kp; k < np + kp; k++) {
+      const int np = number_of_partners[i];
+      for (int k = kp; k < np + kp; k++) {
 
-      const double dx = dxa;
-      const double dy = dya;
-      const double dz = dza;
-      double r2 = (dx * dx + dy * dy + dz * dz);
-      const int j = ja;
-      ja = sorted_list[k + 1];
-      dxa = q[ja].x - qx_key;
-      dya = q[ja].y - qy_key;
-      dza = q[ja].z - qz_key;
-      if (r2 > CL2)continue;
-      pfx += df * dxb;
-      pfy += df * dyb;
-      pfz += df * dzb;
+        const double dx = dxa;
+        const double dy = dya;
+        const double dz = dza;
+        double r2 = (dx * dx + dy * dy + dz * dz);
+        const int j = ja;
+        ja = sorted_list[k + 1];
+        dxa = q[ja].x - qx_key;
+        dya = q[ja].y - qy_key;
+        dza = q[ja].z - qz_key;
+        if (r2 > CL2)continue;
+        pfx += df * dxb;
+        pfy += df * dyb;
+        pfz += df * dzb;
+#pragma omp atomic
+        p[jb].x -= df * dxb;
+#pragma omp atomic
+        p[jb].y -= df * dyb;
+#pragma omp atomic
+        p[jb].z -= df * dzb;
+        const double r6 = r2 * r2 * r2;
+        df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+        jb = j;
+        dxb = dx;
+        dyb = dy;
+        dzb = dz;
+      }
+#pragma omp atomic
       p[jb].x -= df * dxb;
+#pragma omp atomic
       p[jb].y -= df * dyb;
+#pragma omp atomic
       p[jb].z -= df * dzb;
-      const double r6 = r2 * r2 * r2;
-      df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
-      jb = j;
-      dxb = dx;
-      dyb = dy;
-      dzb = dz;
+#pragma omp atomic
+      p[i].x += pfx + df * dxb;
+#pragma omp atomic
+      p[i].y += pfy + df * dyb;
+#pragma omp atomic
+      p[i].z += pfz + df * dzb;
     }
-    p[jb].x -= df * dxb;
-    p[jb].y -= df * dyb;
-    p[jb].z -= df * dzb;
-    p[i].x += pfx + df * dxb;
-    p[i].y += pfy + df * dyb;
-    p[i].z += pfz + df * dzb;
   }
 }
 //----------------------------------------------------------------------
-static inline v8df
+static inline __m512d
 _mm512_load2_m256d(const double* hiaddr,
                    const double* loaddr) {
-  v8df ret;
+  __m512d ret;
   ret = _mm512_insertf64x4(ret, _mm256_load_pd(loaddr), 0x0);
   ret = _mm512_insertf64x4(ret, _mm256_load_pd(hiaddr), 0x1);
   return ret;
@@ -335,14 +501,14 @@ _mm512_load2_m256d(const double* hiaddr,
 static inline void
 _mm512_store2_m256d(double* hiaddr,
                     double* loaddr,
-                    const v8df& dat) {
+                    const __m512d& dat) {
   _mm256_store_pd(loaddr, _mm512_castpd512_pd256(dat));
   _mm256_store_pd(hiaddr, _mm512_extractf64x4_pd(dat, 0x1));
 }
 //----------------------------------------------------------------------
 static inline void
 _mm256_xyz_store_pd(double* addr,
-                    const v4df& dat) {
+                    const __m256d& dat) {
   _mm256_maskstore_pd(addr,
                       _mm256_set_epi64x(0x0,
                                         0xffffffffffffffff,
@@ -354,7 +520,7 @@ _mm256_xyz_store_pd(double* addr,
 static inline void
 _mm512_xyz_store2_m256d(double* hiaddr,
                         double* loaddr,
-                        const v8df& dat) {
+                        const __m512d& dat) {
   _mm256_xyz_store_pd(loaddr,
                       _mm512_castpd512_pd256(dat));
   _mm256_xyz_store_pd(hiaddr,
@@ -362,14 +528,14 @@ _mm512_xyz_store2_m256d(double* hiaddr,
 }
 //----------------------------------------------------------------------
 static inline void
-transpose_4x4x2(v8df& va,
-                v8df& vb,
-                v8df& vc,
-                v8df& vd) {
-  v8df t_a = _mm512_unpacklo_pd(va, vb);
-  v8df t_b = _mm512_unpackhi_pd(va, vb);
-  v8df t_c = _mm512_unpacklo_pd(vc, vd);
-  v8df t_d = _mm512_unpackhi_pd(vc, vd);
+transpose_4x4x2(__m512d& va,
+                __m512d& vb,
+                __m512d& vc,
+                __m512d& vd) {
+  const auto t_a = _mm512_unpacklo_pd(va, vb);
+  const auto t_b = _mm512_unpackhi_pd(va, vb);
+  const auto t_c = _mm512_unpacklo_pd(vc, vd);
+  const auto t_d = _mm512_unpackhi_pd(vc, vd);
 
   va = _mm512_permutex2var_pd(t_a, _mm512_set_epi64(0xd, 0xc, 0x5, 0x4, 0x9, 0x8, 0x1, 0x0), t_c);
   vb = _mm512_permutex2var_pd(t_b, _mm512_set_epi64(0xd, 0xc, 0x5, 0x4, 0x9, 0x8, 0x1, 0x0), t_d);
@@ -378,17 +544,17 @@ transpose_4x4x2(v8df& va,
 }
 //----------------------------------------------------------------------
 static inline void
-transpose_4x4x2(const v8df& va,
-                const v8df& vb,
-                const v8df& vc,
-                const v8df& vd,
-                v8df& vx,
-                v8df& vy,
-                v8df& vz) {
-  v8df t_a = _mm512_unpacklo_pd(va, vb);
-  v8df t_b = _mm512_unpackhi_pd(va, vb);
-  v8df t_c = _mm512_unpacklo_pd(vc, vd);
-  v8df t_d = _mm512_unpackhi_pd(vc, vd);
+transpose_4x4x2(const __m512d& va,
+                const __m512d& vb,
+                const __m512d& vc,
+                const __m512d& vd,
+                __m512d& vx,
+                __m512d& vy,
+                __m512d& vz) {
+  __m512d t_a = _mm512_unpacklo_pd(va, vb);
+  __m512d t_b = _mm512_unpackhi_pd(va, vb);
+  __m512d t_c = _mm512_unpacklo_pd(vc, vd);
+  __m512d t_d = _mm512_unpackhi_pd(vc, vd);
 
   vx = _mm512_permutex2var_pd(t_a, _mm512_set_epi64(0xd, 0xc, 0x5, 0x4, 0x9, 0x8, 0x1, 0x0), t_c);
   vy = _mm512_permutex2var_pd(t_b, _mm512_set_epi64(0xd, 0xc, 0x5, 0x4, 0x9, 0x8, 0x1, 0x0), t_d);
@@ -399,91 +565,84 @@ void
 force_intrin_v1(void) {
 #pragma omp parallel
   {
-    const v8df vc24  = _mm512_set1_pd(24.0 * dt);
-    const v8df vc48  = _mm512_set1_pd(48.0 * dt);
-    const v8df vcl2  = _mm512_set1_pd(CL2);
-    const v8df vzero = _mm512_setzero_pd();
-    const v8si vscale = _mm256_set1_epi32(sizeof(Vec) / sizeof(double));
+    const auto vc24  = _mm512_set1_pd(24.0 * dt);
+    const auto vc48  = _mm512_set1_pd(48.0 * dt);
+    const auto vcl2  = _mm512_set1_pd(CL2);
+    const auto vzero = _mm512_setzero_pd();
+    const auto pn = particle_number;
 
-#pragma omp for schedule(static)
-    for (int i = 0; i < N; i++) {
-      v8df vqxi = _mm512_set1_pd(q[i].x);
-      v8df vqyi = _mm512_set1_pd(q[i].y);
-      v8df vqzi = _mm512_set1_pd(q[i].z);
+#pragma omp for nowait
+    for (int i = 0; i < pn; i++) {
+      const auto vqxi = _mm512_set1_pd(q[i].x);
+      const auto vqyi = _mm512_set1_pd(q[i].y);
+      const auto vqzi = _mm512_set1_pd(q[i].z);
 
-      v8df vpxi = _mm512_setzero_pd();
-      v8df vpyi = _mm512_setzero_pd();
-      v8df vpzi = _mm512_setzero_pd();
+      auto vpxi = _mm512_setzero_pd();
+      auto vpyi = _mm512_setzero_pd();
+      auto vpzi = _mm512_setzero_pd();
 
-      const int np = number_of_partners[i];
-      const int kp = pointer[i];
+      const auto np = number_of_partners[i];
+      const auto kp = pointer[i];
       for (int k = 0; k < (np / 8) * 8; k += 8) {
-        // v8si vindex = _mm256_lddqu_si256(reinterpret_cast<__m256i*>(&sorted_list[kp + k]));
-        v8si vindex = _mm256_loadu_si256(reinterpret_cast<__m256i*>(&sorted_list[kp + k]));
-        vindex *= vscale;
+        const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
+                                              2);
 
-        v8df vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
-        v8df vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
-        v8df vqzj = _mm512_i32gather_pd(vindex, &q[0].z, 8);
+        const auto vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
+        const auto vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
+        const auto vqzj = _mm512_i32gather_pd(vindex, &q[0].z, 8);
 
-#ifdef WITH_REACT
-        v8df vpxj = _mm512_i32gather_pd(vindex, &p[0].x, 8);
-        v8df vpyj = _mm512_i32gather_pd(vindex, &p[0].y, 8);
-        v8df vpzj = _mm512_i32gather_pd(vindex, &p[0].z, 8);
-#endif
+        const auto vdx = _mm512_sub_pd(vqxj, vqxi);
+        const auto vdy = _mm512_sub_pd(vqyj, vqyi);
+        const auto vdz = _mm512_sub_pd(vqzj, vqzi);
 
-        v8df vdx = vqxj - vqxi;
-        v8df vdy = vqyj - vqyi;
-        v8df vdz = vqzj - vqzi;
+        const auto vr2 = _mm512_fmadd_pd(vdz,
+                                         vdz,
+                                         _mm512_fmadd_pd(vdy,
+                                                         vdy,
+                                                         _mm512_mul_pd(vdx, vdx)));
+        const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
 
-        v8df vr2 = vdx * vdx + vdy * vdy + vdz * vdz;
-        v8df vr6 = vr2 * vr2 * vr2;
-        v8df vdf = (vc24 * vr6 - vc48) / (vr6 * vr6 * vr2);
+        auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                                 _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
 
         vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                   vzero, vdf);
+                                    vzero, vdf);
 
-        vpxi += vdf * vdx;
-        vpyi += vdf * vdy;
-        vpzi += vdf * vdz;
-
-#ifdef WITH_REACT
-        vpxj -= vdf * vdx;
-        vpyj -= vdf * vdy;
-        vpzj -= vdf * vdz;
-
-#pragma omp critical
-        {
-          _mm512_i32scatter_pd(&p[0].x, vindex, vpxj, 8);
-          _mm512_i32scatter_pd(&p[0].y, vindex, vpyj, 8);
-          _mm512_i32scatter_pd(&p[0].z, vindex, vpzj, 8);
-        }
-#endif
+        vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
+        vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
+        vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
       } // end of k loop
+#if 0
       // horizontal sum
-      v8df vpwi = _mm512_setzero_pd();
+      auto vpwi = _mm512_setzero_pd();
       transpose_4x4x2(vpxi, vpyi, vpzi, vpwi);
       // vpxi = {vpia, vpie}
       // vpyi = {vpib, vpif}
       // vpzi = {vpic, vpig}
       // vpwi = {vpid, vpih}
 
-      v8df vpi_hilo = vpxi + vpyi + vpzi + vpwi;
-      v8df vpi_lohi = _mm512_castsi512_pd(
+      auto vpi_hilo = _mm512_add_pd(_mm512_add_pd(_mm512_add_pd(vpxi,
+                                                                vpyi),
+                                                  vpzi),
+                                    vpwi);
+      auto vpi_lohi = _mm512_castsi512_pd(
                                           _mm512_alignr_epi64(_mm512_castpd_si512(vpi_hilo),
                                                               _mm512_castpd_si512(vpi_hilo),
                                                               4));
-      v8df vpi = vpi_hilo + vpi_lohi;
+      auto vpi = _mm512_castpd512_pd256(_mm512_add_pd(vpi_hilo, vpi_lohi));
 
       // store
-      vpi += static_cast<v8df>(_mm512_castpd256_pd512(_mm256_load_pd(&p[i].x)));
+      vpi = _mm256_add_pd(vpi, _mm256_load_pd(&p[i].x));
+      _mm256_storeu_pd(&p[i].x, vpi);
 
-#ifdef USE_VEC3
-      _mm256_xyz_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+      auto pfx = p[i].x, pfy = p[i].y, pfz = p[i].z;
 #else
-      _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+      auto pfx = p[i].x + _mm512_reduce_add_pd(vpxi);
+      auto pfy = p[i].y + _mm512_reduce_add_pd(vpyi);
+      auto pfz = p[i].z + _mm512_reduce_add_pd(vpzi);
 #endif
 
+#pragma novector
       for (int k = (np / 8) * 8; k < np; k++) {
         const auto j = sorted_list[kp + k];
         const auto dx = q[j].x - q[i].x;
@@ -493,15 +652,13 @@ force_intrin_v1(void) {
         if (r2 > CL2) continue;
         const auto r6 = r2 * r2 * r2;
         const auto df = (24.0 * r6 - 48.0) / (r6 * r6 * r2) * dt;
-        p[i].x += df * dx;
-        p[i].y += df * dy;
-        p[i].z += df * dz;
-#ifdef WITH_REACT
-        p[j].x -= df * dx;
-        p[j].y -= df * dy;
-        p[j].z -= df * dz;
-#endif
+        pfx += df * dx;
+        pfy += df * dy;
+        pfz += df * dz;
       } // end of k loop
+      p[i].x = pfx;
+      p[i].y = pfy;
+      p[i].z = pfz;
     } // end of i loop
   } // end of pragma omp parallel
 }
@@ -510,101 +667,71 @@ void
 force_intrin_v2(void) {
 #pragma omp parallel
   {
-    const v8df vc24  = _mm512_set1_pd(24.0 * dt);
-    const v8df vc48  = _mm512_set1_pd(48.0 * dt);
-    const v8df vcl2  = _mm512_set1_pd(CL2);
-    const v8df vzero = _mm512_setzero_pd();
+    const auto vc24  = _mm512_set1_pd(24.0 * dt);
+    const auto vc48  = _mm512_set1_pd(48.0 * dt);
+    const auto vcl2  = _mm512_set1_pd(CL2);
+    const auto vzero = _mm512_setzero_pd();
+    const auto pn     = particle_number;
 
-#pragma omp for schedule(static)
-    for (int i = 0; i < N; i++) {
-      v8df vqi = _mm512_castpd256_pd512(_mm256_load_pd(&q[i].x));
+#pragma omp for nowait
+    for (int i = 0; i < pn; i++) {
+      auto vqi = _mm512_castpd256_pd512(_mm256_load_pd(&q[i].x));
       vqi = _mm512_insertf64x4(vqi, _mm512_castpd512_pd256(vqi), 0x1);
-      v8df vpi = _mm512_setzero_pd();
+      auto vpi = _mm512_setzero_pd();
 
-      const int np = number_of_partners[i];
-      const int kp = pointer[i];
+      const auto np = number_of_partners[i];
+      const auto kp = pointer[i];
       for (int k = 0; k < (np / 8) * 8; k += 8) {
         const auto j_a = sorted_list[kp + k    ], j_e = sorted_list[kp + k + 4];
         const auto j_b = sorted_list[kp + k + 1], j_f = sorted_list[kp + k + 5];
         const auto j_c = sorted_list[kp + k + 2], j_g = sorted_list[kp + k + 6];
         const auto j_d = sorted_list[kp + k + 3], j_h = sorted_list[kp + k + 7];
 
-#ifdef WITH_REACT
-        v8df vpj_ea = _mm512_load2_m256d(&p[j_e].x, &p[j_a].x);
-        v8df vpj_fb = _mm512_load2_m256d(&p[j_f].x, &p[j_b].x);
-        v8df vpj_gc = _mm512_load2_m256d(&p[j_g].x, &p[j_c].x);
-        v8df vpj_hd = _mm512_load2_m256d(&p[j_h].x, &p[j_d].x);
-#endif
+        auto vqj_ea = _mm512_load2_m256d(&q[j_e].x, &q[j_a].x);
+        auto vqj_fb = _mm512_load2_m256d(&q[j_f].x, &q[j_b].x);
+        auto vqj_gc = _mm512_load2_m256d(&q[j_g].x, &q[j_c].x);
+        auto vqj_hd = _mm512_load2_m256d(&q[j_h].x, &q[j_d].x);
 
-        v8df vqj_ea = _mm512_load2_m256d(&q[j_e].x, &q[j_a].x);
-        v8df vqj_fb = _mm512_load2_m256d(&q[j_f].x, &q[j_b].x);
-        v8df vqj_gc = _mm512_load2_m256d(&q[j_g].x, &q[j_c].x);
-        v8df vqj_hd = _mm512_load2_m256d(&q[j_h].x, &q[j_d].x);
+        auto vdq_ea = _mm512_sub_pd(vqj_ea, vqi);
+        auto vdq_fb = _mm512_sub_pd(vqj_fb, vqi);
+        auto vdq_gc = _mm512_sub_pd(vqj_gc, vqi);
+        auto vdq_hd = _mm512_sub_pd(vqj_hd, vqi);
 
-        v8df vdq_ea = vqj_ea - vqi;
-        v8df vdq_fb = vqj_fb - vqi;
-        v8df vdq_gc = vqj_gc - vqi;
-        v8df vdq_hd = vqj_hd - vqi;
-
-        v8df vdx, vdy, vdz;
+        __m512d vdx, vdy, vdz;
         transpose_4x4x2(vdq_ea, vdq_fb, vdq_gc, vdq_hd,
                         vdx, vdy, vdz);
 
-        v8df vr2 = vdx * vdx + vdy * vdy + vdz * vdz;
-        v8df vr6 = vr2 * vr2 * vr2;
-        v8df vdf = (vc24 * vr6 - vc48) / (vr6 * vr6 * vr2);
+        const auto vr2 = _mm512_fmadd_pd(vdz,
+                                         vdz,
+                                         _mm512_fmadd_pd(vdy,
+                                                         vdy,
+                                                         _mm512_mul_pd(vdx, vdx)));
+        const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
 
+        auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                                 _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
         vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
                                    vzero, vdf);
 
-        v8df vdf_ea = _mm512_permutex_pd(vdf, 0x00);
-        v8df vdf_fb = _mm512_permutex_pd(vdf, 0x55);
-        v8df vdf_gc = _mm512_permutex_pd(vdf, 0xaa);
-        v8df vdf_hd = _mm512_permutex_pd(vdf, 0xff);
+        auto vdf_ea = _mm512_permutex_pd(vdf, 0x00);
+        auto vdf_fb = _mm512_permutex_pd(vdf, 0x55);
+        auto vdf_gc = _mm512_permutex_pd(vdf, 0xaa);
+        auto vdf_hd = _mm512_permutex_pd(vdf, 0xff);
 
-        vpi    += vdf_ea * vdq_ea;
-        vpi    += vdf_fb * vdq_fb;
-        vpi    += vdf_gc * vdq_gc;
-        vpi    += vdf_hd * vdq_hd;
-
-#ifdef WITH_REACT
-        vpj_ea -= vdf_ea * vdq_ea;
-        vpj_fb -= vdf_fb * vdq_fb;
-        vpj_gc -= vdf_gc * vdq_gc;
-        vpj_hd -= vdf_hd * vdq_hd;
-
-#pragma omp critical
-        {
-#ifdef USE_VEC3
-          _mm512_xyz_store2_m256d(&p[j_e].x, &p[j_a].x, vpj_ea);
-          _mm512_xyz_store2_m256d(&p[j_f].x, &p[j_b].x, vpj_fb);
-          _mm512_xyz_store2_m256d(&p[j_g].x, &p[j_c].x, vpj_gc);
-          _mm512_xyz_store2_m256d(&p[j_h].x, &p[j_d].x, vpj_hd);
-#else
-          _mm512_store2_m256d(&p[j_e].x, &p[j_a].x, vpj_ea);
-          _mm512_store2_m256d(&p[j_f].x, &p[j_b].x, vpj_fb);
-          _mm512_store2_m256d(&p[j_g].x, &p[j_c].x, vpj_gc);
-          _mm512_store2_m256d(&p[j_h].x, &p[j_d].x, vpj_hd);
-#endif
-        }
-#endif
+        vpi = _mm512_fmadd_pd(vdf_ea, vdq_ea, vpi);
+        vpi = _mm512_fmadd_pd(vdf_fb, vdq_fb, vpi);
+        vpi = _mm512_fmadd_pd(vdf_gc, vdq_gc, vpi);
+        vpi = _mm512_fmadd_pd(vdf_hd, vdq_hd, vpi);
       } // end of k loop
       vpi = _mm512_add_pd(vpi,
                           _mm512_permutexvar_pd(_mm512_set_epi64(0x3, 0x2, 0x1, 0x0, 0x7, 0x6, 0x5, 0x4),
                                                 vpi));
       vpi = _mm512_add_pd(vpi, _mm512_castpd256_pd512(_mm256_load_pd(&p[i].x)));
 
-#ifdef USE_VEC3
-      _mm256_maskstore_pd(&p[i].x,
-                          _mm256_set_epi64x(0x0,
-                                            0xffffffffffffffff,
-                                            0xffffffffffffffff,
-                                            0xffffffffffffffff),
-                          _mm512_castpd512_pd256(vpi));
-#else
       _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
-#endif
 
+      double pfx = p[i].x, pfy = p[i].y, pfz = p[i].z;
+#pragma novector
       for (int k = (np / 8) * 8; k < np; k++) {
         const auto j = sorted_list[kp + k];
         const auto dx = q[j].x - q[i].x;
@@ -614,15 +741,13 @@ force_intrin_v2(void) {
         if (r2 > CL2) continue;
         const auto r6 = r2 * r2 * r2;
         const auto df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
-        p[i].x += df * dx;
-        p[i].y += df * dy;
-        p[i].z += df * dz;
-#ifdef WITH_REACT
-        p[j].x -= df * dx;
-        p[j].y -= df * dy;
-        p[j].z -= df * dz;
-#endif
+        pfx += df * dx;
+        pfy += df * dy;
+        pfz += df * dz;
       } // end of k loop
+      p[i].x = pfx;
+      p[i].y = pfy;
+      p[i].z = pfz;
     } // end of i loop
   } // end of pragma omp parallel
 }
@@ -630,13 +755,13 @@ force_intrin_v2(void) {
 void
 measure(void(*pfunc)(), const char *name) {
   const auto beg = std::chrono::system_clock::now();
-  const int LOOP = 20;
+  const int LOOP = 100;
   for (int i = 0; i < LOOP; i++) {
     pfunc();
   }
   const auto end = std::chrono::system_clock::now();
-  const long dur = std::chrono::duration_cast<std::chrono::microseconds>(end - beg).count();
-  fprintf(stderr, "N=%d, %s %ld [microsec]\n", particle_number, name, dur);
+  const long dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg).count();
+  fprintf(stderr, "N=%d, %s %ld [ms]\n", particle_number, name, dur);
 }
 //----------------------------------------------------------------------
 void
@@ -702,20 +827,21 @@ main(void) {
 #elif NEXT
   measure(&force_next, "next");
   print_result();
+#elif defined SORTED && defined REACTLESS
+  measure(&force_sorted_reactless, "sorted_reactless");
+  print_result();
 #elif SORTED
   measure(&force_sorted, "sorted");
   print_result();
-#elif INTRIN_v1
+#elif SORTED_HT
+  // measure(&force_sorted_ht, "sorted_ht");
+  // print_result();
+#elif defined INTRIN_v1 && defined REACTLESS
   measure(&force_intrin_v1, "intrin_v1");
   print_result();
-#elif INTRIN_v2
+#elif defined INTRIN_v2 && defined REACTLESS
   measure(&force_intrin_v2, "intrin_v2");
   print_result();
-#else
-  measure(&force_pair, "pair");
-  measure(&force_next, "sorted_next");
-  measure(&force_intrin_v1, "intrin_v1");
-  measure(&force_intrin_v2, "intrin_v2");
 #endif
   deallocate();
 }

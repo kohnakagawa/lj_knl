@@ -1,48 +1,48 @@
-TARGET= aos.out aos_pair.out aos_next.out aos_sorted.out aos_intrin_v1.out aos_intrin_v2.out soa.out soa_pair.out soa_next.out soa_intrin_v1.out knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out aos_intrin_v1_reactless.out aos_intrin_v2_reactless.out
+AOS = aos_pair.out aos_next.out aos_sorted.out aos_sorted_reactless.out aos_intrin_v1.out aos_intrin_v2.out
+SOA = soa_pair.out soa_next.out soa_intrin_v1.out
+LOOP_DEP = knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out
+
+TARGET= $(AOS) $(SOA) $(LOOP_DEP)
+
 ASM = force_aos.s force_soa.s force_aos_loop_dep.s force_soa_loop_dep.s
 
 all: $(TARGET) $(ASM)
+
+aos: $(AOS)
+soa: $(SOA)
+loop: $(LOOP_DEP)
 
 .SUFFIXES:
 .SUFFIXES: .cpp .s
 .cpp.s:
 	icpc -O3 -xMIC-AVX512 -std=c++11 -S $< -o $@
 
-aos.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 $< -o $@
-
 aos_pair.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DWITH_REACT -DPAIR $< -o $@
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
 
 aos_sorted.out: force_aos.cpp
 	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DSORTED $< -o $@
 
+aos_sorted_reactless.out: force_aos.cpp
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DSORTED -DREACTLESS $< -o $@
+
 aos_next.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DWITH_REACT -DNEXT $< -o $@
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DNEXT $< -o $@
 
 aos_intrin_v1.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -DWITH_REACT -qopenmp $< -o $@
+	icpc -O3 -qopenmp -qopt-prefetch=4 -qopt-threads-per-core=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -DREACTLESS $< -o $@
 
 aos_intrin_v2.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 -DWITH_REACT -qopenmp $< -o $@
-
-aos_intrin_v1_reactless.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -qopenmp $< -o $@
-
-aos_intrin_v2_reactless.out: force_aos.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 -qopenmp $< -o $@
-
-soa.out: force_soa.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 $< -o $@
+	icpc -O3 -qopenmp -qopt-prefetch=4 -qopt-threads-per-core=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 -DREACTLESS $< -o $@
 
 soa_pair.out: force_soa.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
 
 soa_next.out: force_soa.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DNEXT $< -o $@
+	icpc -O3 -qopenmp -xMIC-AVX512 -std=c++11 -DNEXT $< -o $@
 
 soa_intrin_v1.out: force_soa.cpp
-	icpc -O3 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 $< -o $@
+	icpc -O3 -qopenmp -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -DREACTLESS $< -o $@
 
 knl_ref_aos.out: force_aos_loop_dep.cpp
 	icpc -O3 -xMIC-AVX512 -std=c++11 -DREFERENCE $< -o $@
@@ -62,21 +62,25 @@ knl_1x8_soa_v1.out: force_soa_loop_dep.cpp
 clean:
 	rm -f $(TARGET) $(ASM)
 
-test_aos: aos_pair.out aos_next.out aos_intrin_v1.out aos_intrin_v2.out
+test_aos: $(AOS)
 	./aos_pair.out > aos_pair.dat
 	./aos_next.out > aos_next.dat
+	./aos_sorted.out > aos_sorted.dat
+	./aos_sorted_reactless.out > aos_sorted_reactless.dat
 	./aos_intrin_v1.out > aos_intrin_v1.dat
 	./aos_intrin_v2.out > aos_intrin_v2.dat
 	diff aos_pair.dat aos_next.dat
-	diff aos_next.dat aos_intrin_v1.dat
+	diff aos_next.dat aos_sorted.dat
+	diff aos_sorted.dat aos_sorted_reactless.dat
+	diff aos_sorted_reactless.dat aos_intrin_v1.dat
 	diff aos_intrin_v1.dat aos_intrin_v2.dat
 
-test_soa: soa_pair.out soa_next.out soa_intrin_v1.out
+test_soa: $(SOA)
 	./soa_pair.out > soa_pair.dat
 	./soa_next.out > soa_next.dat
 	./soa_intrin_v1.out > soa_intrin_v1.dat
 	diff soa_pair.dat soa_next.dat
 	diff soa_next.dat soa_intrin_v1.dat
 
-test_loop: knl_ref_aos.out knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_ref_soa.out knl_1x8_soa_v1.out
+test_loop: $(LOOP_DEP)
 	./run_ofp.sh
