@@ -9,7 +9,8 @@
 #include <x86intrin.h>
 #include <sys/stat.h>
 //----------------------------------------------------------------------
-const double density = 1.0;
+// const double density = 1.0;
+const double density = 0.5;
 const int N = 400000;
 #ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
@@ -139,12 +140,26 @@ makepair(void) {
 //----------------------------------------------------------------------
 void
 first_touch(void) {
-  const int est_N = 119164;
+  int est_N = 0, est_pair_num = 0;
+
+  if (density == 1.0) {
+    est_N = 119164;
 #ifdef REACTLESS
-  const int est_pair_num = 2 * 7839886;
+    est_pair_num = 2 * 7839886;
 #else
-  const int est_pair_num = 7839886;
+    est_pair_num = 7839886;
 #endif
+  } else if (density == 0.5) {
+    est_N = 62500;
+#ifdef REACTLESS
+    est_pair_num = 2 * 4536276;
+#else
+    est_pair_num = 4536276;
+#endif
+  } else {
+    est_N = N;
+    est_pair_num = MAX_PAIRS;
+  }
 
 #pragma omp parallel for
   for (int i = 0; i < est_N; i++) {
