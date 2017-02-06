@@ -255,6 +255,77 @@ void calc_intrin1x8_v2() {
   }
 }
 
+void calc_intrin1x8_v3() {
+  const auto vc24  = _mm512_set1_pd(24.0 * dt);
+  const auto vc48  = _mm512_set1_pd(48.0 * dt);
+  const auto veps2 = _mm512_set1_pd(eps2);
+  const auto vzero = _mm512_setzero_pd();
+
+  for (int i = 0; i < N; i++) {
+    const auto vqxi = _mm512_set1_pd(q[i].x);
+    const auto vqyi = _mm512_set1_pd(q[i].y);
+    const auto vqzi = _mm512_set1_pd(q[i].z);
+
+    auto vpxi = _mm512_setzero_pd();
+    auto vpyi = _mm512_setzero_pd();
+    auto vpzi = _mm512_setzero_pd();
+
+    const auto vjmax_idx = _mm512_set1_epi64(M);
+    auto vjptcl_idx = _mm512_set_epi64(7, 6, 5, 4,
+                                       3, 2, 1, 0);
+    const auto pitch = _mm512_set1_epi64(8);
+
+    for (int k = 0; k < ((M - 1) / 8 + 1) * 8; k += 8) {
+      const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&list[k])),
+                                            2);
+
+      const auto mask = _mm512_cmp_epi64_mask(vjptcl_idx,
+                                              vjmax_idx,
+                                              _MM_CMPINT_LT);
+
+      const auto vqxj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &q[0].x, 8);
+      const auto vqyj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &q[0].y, 8);
+      const auto vqzj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &q[0].z, 8);
+
+      auto vpxj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &p[0].x, 8);
+      auto vpyj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &p[0].y, 8);
+      auto vpzj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &p[0].z, 8);
+
+      const auto vdx = _mm512_sub_pd(vqxj, vqxi);
+      const auto vdy = _mm512_sub_pd(vqyj, vqyi);
+      const auto vdz = _mm512_sub_pd(vqzj, vqzi);
+
+      const auto vr2 = _mm512_fmadd_pd(vdz, vdz,
+                                       _mm512_fmadd_pd(vdy, vdy,
+                                                       _mm512_fmadd_pd(vdx, vdx,
+                                                                       veps2)));
+      const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                               _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
+
+      vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
+
+      vpxj = _mm512_fmsub_pd(vdf, vdx, vpxj);
+      vpyj = _mm512_fmsub_pd(vdf, vdy, vpyj);
+      vpzj = _mm512_fmsub_pd(vdf, vdz, vpzj);
+
+      _mm512_mask_i32scatter_pd(&p[0].x, mask, vindex, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].y, mask, vindex, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].z, mask, vindex, vpzj, 8);
+
+      vjptcl_idx = _mm512_add_epi32(vjptcl_idx, pitch);
+    }
+
+    // horizontal sum
+    p[i].x += _mm512_reduce_add_pd(vpxi);
+    p[i].y += _mm512_reduce_add_pd(vpyi);
+    p[i].z += _mm512_reduce_add_pd(vpzi);
+  }
+}
+
 void init() {
   std::mt19937 mt;
   std::uniform_real_distribution<> ud(0.0, 10.0);
@@ -326,7 +397,8 @@ int main(int argc, char* argv[]) {
 
   posix_memalign((void**)(&q), 64, sizeof(double4) * N);
   posix_memalign((void**)(&p), 64, sizeof(double4) * N);
-  posix_memalign((void**)(&list), 32, sizeof(int32_t) * M);
+  posix_memalign((void**)(&list), 32, sizeof(int32_t) * ((M - 1) / 8 + 1) * 8);
+  std::fill_n(list, ((M - 1) / 8 + 1) * 8, 0);
 
   gen_neighlist(rand_seed);
 
@@ -339,6 +411,8 @@ int main(int argc, char* argv[]) {
   BENCH(calc_intrin1x8_v1, num_loop);
 #elif USE1x8_v2
   BENCH(calc_intrin1x8_v2, num_loop);
+#elif USE1x8_v3
+  BENCH(calc_intrin1x8_v3, num_loop);
 #elif REFERENCE
   BENCH(reference, num_loop);
 #endif

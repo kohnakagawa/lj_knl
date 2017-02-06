@@ -10,8 +10,8 @@
 #include <sys/stat.h>
 #include <omp.h>
 //----------------------------------------------------------------------
-// const double density = 1.0;
-const double density = 0.5;
+const double density = 1.0;
+// const double density = 0.5;
 const int N = 400000;
 #ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
@@ -768,6 +768,79 @@ force_intrin_v2(void) {
 }
 //----------------------------------------------------------------------
 void
+force_intrin_v3(void) {
+#pragma omp parallel
+  {
+    const auto vc24  = _mm512_set1_pd(24.0 * dt);
+    const auto vc48  = _mm512_set1_pd(48.0 * dt);
+    const auto vcl2  = _mm512_set1_pd(CL2);
+    const auto vzero = _mm512_setzero_pd();
+    const auto pn = particle_number;
+    const auto vpitch = _mm512_set1_epi64(8);
+
+#pragma omp for nowait
+    for (int i = 0; i < pn; i++) {
+      const auto vqxi = _mm512_set1_pd(q[i].x);
+      const auto vqyi = _mm512_set1_pd(q[i].y);
+      const auto vqzi = _mm512_set1_pd(q[i].z);
+
+      auto vpxi = _mm512_setzero_pd();
+      auto vpyi = _mm512_setzero_pd();
+      auto vpzi = _mm512_setzero_pd();
+
+      const auto np = number_of_partners[i];
+      const auto kp = pointer[i];
+      const auto vnp = _mm512_set1_epi64(np);
+      auto vk_idx = _mm512_set_epi64(7, 6, 5, 4,
+                                     3, 2, 1, 0);
+      const auto num_loop = ((np - 1) / 8 + 1) * 8;
+
+      for (int k = 0; k < num_loop; k += 8) {
+        const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
+                                              2);
+
+        const auto mask = _mm512_cmp_epi64_mask(vk_idx,
+                                                vnp,
+                                                _MM_CMPINT_LT);
+
+        const auto vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
+        const auto vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
+        const auto vqzj = _mm512_i32gather_pd(vindex, &q[0].z, 8);
+
+        const auto vdx = _mm512_sub_pd(vqxj, vqxi);
+        const auto vdy = _mm512_sub_pd(vqyj, vqyi);
+        const auto vdz = _mm512_sub_pd(vqzj, vqzi);
+
+        const auto vr2 = _mm512_fmadd_pd(vdz,
+                                         vdz,
+                                         _mm512_fmadd_pd(vdy,
+                                                         vdy,
+                                                         _mm512_mul_pd(vdx, vdx)));
+        const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+
+        auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                                 _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+
+        vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                                    vzero, vdf);
+
+        vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
+
+        vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
+        vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
+        vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
+
+        vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+      } // end of k loop
+
+      p[i].x += _mm512_reduce_add_pd(vpxi);
+      p[i].y += _mm512_reduce_add_pd(vpyi);
+      p[i].z += _mm512_reduce_add_pd(vpzi);
+    } // end of i loop
+  } // end of pragma omp parallel
+}
+//----------------------------------------------------------------------
+void
 measure(void(*pfunc)(), const char *name) {
   const auto beg = std::chrono::system_clock::now();
   const int LOOP = 100;
@@ -856,6 +929,9 @@ main(void) {
   print_result();
 #elif defined INTRIN_v2 && defined REACTLESS
   measure(&force_intrin_v2, "intrin_v2");
+  print_result();
+#elif defined INTRIN_v3 && defined REACTLESS
+  measure(&force_intrin_v3, "intrin_v3");
   print_result();
 #endif
   deallocate();
