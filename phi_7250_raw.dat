@@ -9,11 +9,12 @@ N=119164, sorted 1230 [ms]
 N=119164, sorted_reactless 393 [ms]
 N=119164, intrin_v1 130 [ms]
 N=119164, intrin_v2 139 [ms]
+N=119164, intrin_v3 124 [ms]
 
 ## soa
-N=119164, pair 2979 [microsec]
-N=119164, next 1877 [microsec]
-N=119164, intrin_v1 135 [microsec]
+N=119164, pair 2979 [ms]
+N=119164, next 1877 [ms]
+N=119164, intrin_v1 135 [ms]
 
 #density = 0.5
 
@@ -24,6 +25,7 @@ N=62500, sorted 318 [ms]
 N=62500, sorted_reactless 112 [ms]
 N=62500, intrin_v1 40 [ms]
 N=62500, intrin_v2 46 [ms]
+N=62500, intrin_v3 35 [ms]
 
 ## soa
 N=62500, pair 521 [ms]
