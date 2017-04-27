@@ -631,28 +631,10 @@ force_intrin_v3(void) {
     vdf = _mm512_mask_blend_pd(mask_a, vzero, vdf);
 
     for (int k = 8; k < num_loop; k += 8) {
-      // write back j particle momentum
-      vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
-      vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
-      vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
-
-      auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
-      auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
-      auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
-
-      vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
-      vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
-      vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
-
-      _mm512_mask_i32scatter_pd(&p[0].x, mask_a, vindex_a, vpxj, 8);
-      _mm512_mask_i32scatter_pd(&p[0].y, mask_a, vindex_a, vpyj, 8);
-      _mm512_mask_i32scatter_pd(&p[0].z, mask_a, vindex_a, vpzj, 8);
-
-      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
-
       // load position
       auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
                                         2);
+      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
       auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
                                           vnp,
                                           _MM_CMPINT_LT);
@@ -670,6 +652,23 @@ force_intrin_v3(void) {
                                             vdy_b,
                                             _mm512_mul_pd(vdx_b,
                                                           vdx_b)));
+
+      // write back j particle momentum
+      vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
+
+      auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
+      auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
+      auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
+
+      vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
+      vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
+      vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
+
+      _mm512_mask_i32scatter_pd(&p[0].x, mask_a, vindex_a, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].y, mask_a, vindex_a, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].z, mask_a, vindex_a, vpzj, 8);
 
       // calc force norm
       vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
