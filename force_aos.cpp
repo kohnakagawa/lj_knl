@@ -565,7 +565,7 @@ force_intrin_v2(void) {
       _mm512_mask_i32scatter_pd(&p[0].y, mask, vindex, vpyj, 8);
       _mm512_mask_i32scatter_pd(&p[0].z, mask, vindex, vpzj, 8);
 
-      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+      vk_idx = _mm512_add_epi64(vk_idx, vpitch);
     } // end of k loop
 
     p[i].x += _mm512_reduce_add_pd(vpxi);
@@ -634,7 +634,7 @@ force_intrin_v3(void) {
       // load position
       auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
                                         2);
-      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+      vk_idx = _mm512_add_epi64(vk_idx, vpitch);
       auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
                                           vnp,
                                           _MM_CMPINT_LT);
@@ -1034,7 +1034,7 @@ force_intrin_v3_reactless(void) {
       vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
       vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
 
-      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+      vk_idx = _mm512_add_epi64(vk_idx, vpitch);
     } // end of k loop
 
     p[i].x += _mm512_reduce_add_pd(vpxi);
