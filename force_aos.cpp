@@ -333,7 +333,7 @@ static inline __m512d
 _mm512_load2_m256d(const double* hiaddr,
                    const double* loaddr) {
   __m512d ret;
-  ret = _mm512_insertf64x4(ret, _mm256_load_pd(loaddr), 0x0);
+  ret = _mm512_castpd256_pd512(_mm256_load_pd(loaddr));
   ret = _mm512_insertf64x4(ret, _mm256_load_pd(hiaddr), 0x1);
   return ret;
 }
@@ -401,6 +401,7 @@ transpose_4x4x2(const __m512d& va,
   vz = _mm512_permutex2var_pd(t_a, _mm512_set_epi64(0xf, 0xe, 0x7, 0x6, 0xb, 0xa, 0x3, 0x2), t_c);
 }
 //----------------------------------------------------------------------
+// intrin (with scatter & gather)
 void
 force_intrin_v1(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -490,6 +491,7 @@ force_intrin_v1(void) {
   } // end of i loop
 }
 //----------------------------------------------------------------------
+// intrin (with scatter & gather) + remove remaining loop
 void
 force_intrin_v2(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -707,6 +709,111 @@ force_intrin_v3(void) {
     p[i].x += _mm512_reduce_add_pd(vpxi);
     p[i].y += _mm512_reduce_add_pd(vpyi);
     p[i].z += _mm512_reduce_add_pd(vpzi);
+  } // end of i loop
+}
+//----------------------------------------------------------------------
+// intrin (without scatter & gather)
+void
+force_intrin_v4(void) {
+  const auto vc24  = _mm512_set1_pd(24.0 * dt);
+  const auto vc48  = _mm512_set1_pd(48.0 * dt);
+  const auto vcl2  = _mm512_set1_pd(CL2);
+  const auto vzero = _mm512_setzero_pd();
+  const auto pn = particle_number;
+
+  for (int i = 0; i < pn; i++) {
+    auto vqi = _mm512_castpd256_pd512(_mm256_load_pd(&q[i].x));
+    vqi = _mm512_insertf64x4(vqi, _mm512_castpd512_pd256(vqi), 0x1);
+    auto vpi = _mm512_setzero_pd();
+
+    const auto np = number_of_partners[i];
+    const auto kp = pointer[i];
+    for (int k = 0; k < (np / 8) * 8; k += 8) {
+      const auto j_b = sorted_list[k + kp + 1], j_a = sorted_list[k + kp    ];
+      const auto j_d = sorted_list[k + kp + 3], j_c = sorted_list[k + kp + 2];
+      const auto j_f = sorted_list[k + kp + 5], j_e = sorted_list[k + kp + 4];
+      const auto j_h = sorted_list[k + kp + 7], j_g = sorted_list[k + kp + 6];
+
+      auto vqj_ba = _mm512_load2_m256d(&q[j_b].x, &q[j_a].x);
+      auto vqj_dc = _mm512_load2_m256d(&q[j_d].x, &q[j_c].x);
+      auto vqj_fe = _mm512_load2_m256d(&q[j_f].x, &q[j_e].x);
+      auto vqj_hg = _mm512_load2_m256d(&q[j_h].x, &q[j_g].x);
+
+      auto vdq_ba = _mm512_sub_pd(vqj_ba, vqi);
+      auto vdq_dc = _mm512_sub_pd(vqj_dc, vqi);
+      auto vdq_fe = _mm512_sub_pd(vqj_fe, vqi);
+      auto vdq_hg = _mm512_sub_pd(vqj_hg, vqi);
+
+      __m512d vdx, vdy, vdz;
+      transpose_4x4x2(vdq_ba, vdq_dc, vdq_fe, vdq_hg,
+                      vdx, vdy, vdz);
+
+      const auto vr2 = _mm512_fmadd_pd(vdz,
+                                       vdz,
+                                       _mm512_fmadd_pd(vdy,
+                                                       vdy,
+                                                       _mm512_mul_pd(vdx, vdx)));
+
+      const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                               _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                                 vzero, vdf);
+
+      auto vdf_ba = _mm512_permutex_pd(vdf, 0x00);
+      auto vdf_dc = _mm512_permutex_pd(vdf, 0x55);
+      auto vdf_fe = _mm512_permutex_pd(vdf, 0xaa);
+      auto vdf_hg = _mm512_permutex_pd(vdf, 0xff);
+
+      vpi = _mm512_fmadd_pd(vdf_ba, vdq_ba, vpi);
+      auto vpj_ba = _mm512_load2_m256d(&p[j_b].x, &p[j_a].x);
+      vpj_ba = _mm512_fnmadd_pd(vdf_ba, vdq_ba, vpj_ba);
+      _mm512_store2_m256d(&p[j_b].x, &p[j_a].x, vpj_ba);
+
+      vpi = _mm512_fmadd_pd(vdf_dc, vdq_dc, vpi);
+      auto vpj_dc = _mm512_load2_m256d(&p[j_d].x, &p[j_c].x);
+      vpj_dc = _mm512_fnmadd_pd(vdf_dc, vdq_dc, vpj_dc);
+      _mm512_store2_m256d(&p[j_d].x, &p[j_c].x, vpj_dc);
+
+      vpi = _mm512_fmadd_pd(vdf_fe, vdq_fe, vpi);
+      auto vpj_fe = _mm512_load2_m256d(&p[j_f].x, &p[j_e].x);
+      vpj_fe = _mm512_fnmadd_pd(vdf_fe, vdq_fe, vpj_fe);
+      _mm512_store2_m256d(&p[j_f].x, &p[j_e].x, vpj_fe);
+
+      vpi = _mm512_fmadd_pd(vdf_hg, vdq_hg, vpi);
+      auto vpj_hg = _mm512_load2_m256d(&p[j_h].x, &p[j_g].x);
+      vpj_hg = _mm512_fnmadd_pd(vdf_hg, vdq_hg, vpj_hg);
+      _mm512_store2_m256d(&p[j_h].x, &p[j_g].x, vpj_hg);
+    } // end of k loop
+    vpi = _mm512_add_pd(vpi,
+                        _mm512_permutexvar_pd(_mm512_set_epi64(0x3, 0x2, 0x1, 0x0, 0x7, 0x6, 0x5, 0x4),
+                                              vpi));
+    vpi = _mm512_add_pd(vpi, _mm512_castpd256_pd512(_mm256_load_pd(&p[i].x)));
+    _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+
+    // remaining loop
+    double pfx = 0.0, pfy = 0.0, pfz = 0.0;
+    auto qx_key = q[i].x, qy_key = q[i].y, qz_key = q[i].z;
+#pragma novector
+    for (int k = (np / 8) * 8; k < np; k++) {
+      const auto j = sorted_list[kp + k];
+      const auto dx = q[j].x - qx_key;
+      const auto dy = q[j].y - qy_key;
+      const auto dz = q[j].z - qz_key;
+      const auto r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 > CL2) continue;
+      const auto r6 = r2 * r2 * r2;
+      const auto df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+      pfx    += df * dx;
+      pfy    += df * dy;
+      pfz    += df * dz;
+      p[j].x -= df * dx;
+      p[j].y -= df * dy;
+      p[j].z -= df * dz;
+    } // end of k loop
+    p[i].x += pfx;
+    p[i].y += pfy;
+    p[i].z += pfz;
   } // end of i loop
 }
 //----------------------------------------------------------------------
@@ -1032,6 +1139,9 @@ main(void) {
   print_result();
 #elif INTRIN_v3
   measure(&force_intrin_v3, "intrin_v3");
+  print_result();
+#elif INTRIN_v4
+  measure(&force_intrin_v4, "intrin_v4");
   print_result();
 #endif
   deallocate();
