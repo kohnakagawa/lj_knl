@@ -64,6 +64,18 @@ print512(__m512d r) {
 }
 //----------------------------------------------------------------------
 void
+print256i(__m256i r) {
+  union {
+    __m256i r;
+    int32_t elem[8];
+  } tmp;
+  tmp.r = r;
+  printf("%d %d %d %d %d %d %d %d\n",
+         tmp.elem[0], tmp.elem[1], tmp.elem[2], tmp.elem[3],
+         tmp.elem[4], tmp.elem[5], tmp.elem[6], tmp.elem[7]);
+}
+//----------------------------------------------------------------------
+void
 add_particle(double x, double y, double z) {
   static std::mt19937 mt(2);
   std::uniform_real_distribution<double> ud(0.0, 0.1);
@@ -528,6 +540,7 @@ force_intrin_v2(void) {
                                        _mm512_fmadd_pd(vdy,
                                                        vdy,
                                                        _mm512_mul_pd(vdx, vdx)));
+
       const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
 
       auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
@@ -559,6 +572,7 @@ force_intrin_v2(void) {
   } // end of i loop
 }
 //----------------------------------------------------------------------
+// intrin (with scatter & gather) + swp + remove remaining loop
 void
 force_intrin_v3(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -584,56 +598,112 @@ force_intrin_v3(void) {
                                    3LL, 2LL, 1LL, 0LL);
     const auto num_loop = ((np - 1) / 8 + 1) * 8;
 
-    for (int k = 0; k < num_loop; k += 8) {
-      const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
-                                            2);
+    // initial force calculation
+    // load position
+    auto vindex_a = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp])),
+                                      2);
+    auto mask_a = _mm512_cmp_epi64_mask(vk_idx,
+                                        vnp,
+                                        _MM_CMPINT_LT);
+    auto vqxj = _mm512_i32gather_pd(vindex_a, &q[0].x, 8);
+    auto vqyj = _mm512_i32gather_pd(vindex_a, &q[0].y, 8);
+    auto vqzj = _mm512_i32gather_pd(vindex_a, &q[0].z, 8);
 
-      const auto mask = _mm512_cmp_epi64_mask(vk_idx,
-                                              vnp,
-                                              _MM_CMPINT_LT);
+    // calc distance
+    auto vdx_a = _mm512_sub_pd(vqxj, vqxi);
+    auto vdy_a = _mm512_sub_pd(vqyj, vqyi);
+    auto vdz_a = _mm512_sub_pd(vqzj, vqzi);
+    auto vr2 = _mm512_fmadd_pd(vdz_a,
+                               vdz_a,
+                               _mm512_fmadd_pd(vdy_a,
+                                               vdy_a,
+                                               _mm512_mul_pd(vdx_a, vdx_a)));
 
-      const auto vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
-      const auto vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
-      const auto vqzj = _mm512_i32gather_pd(vindex, &q[0].z, 8);
+    // calc force norm
+    auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
 
-      const auto vdx = _mm512_sub_pd(vqxj, vqxi);
-      const auto vdy = _mm512_sub_pd(vqyj, vqyi);
-      const auto vdz = _mm512_sub_pd(vqzj, vqzi);
+    auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                             _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+    vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                               vzero, vdf);
+    vdf = _mm512_mask_blend_pd(mask_a, vzero, vdf);
 
-      auto vpxj = _mm512_i32gather_pd(vindex, &p[0].x, 8);
-      auto vpyj = _mm512_i32gather_pd(vindex, &p[0].y, 8);
-      auto vpzj = _mm512_i32gather_pd(vindex, &p[0].z, 8);
+    for (int k = 8; k < num_loop; k += 8) {
+      // write back j particle momentum
+      vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
 
-      const auto vr2 = _mm512_fmadd_pd(vdz,
-                                       vdz,
-                                       _mm512_fmadd_pd(vdy,
-                                                       vdy,
-                                                       _mm512_mul_pd(vdx, vdx)));
-      const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
+      auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
+      auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
 
-      auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
-                               _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
+      vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
+      vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
 
-      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                 vzero, vdf);
-
-      vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
-
-      vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
-      vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
-      vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
-
-      vpxj = _mm512_fnmadd_pd(vdf, vdx, vpxj);
-      vpyj = _mm512_fnmadd_pd(vdf, vdy, vpyj);
-      vpzj = _mm512_fnmadd_pd(vdf, vdz, vpzj);
-
-      _mm512_mask_i32scatter_pd(&p[0].x, mask, vindex, vpxj, 8);
-      _mm512_mask_i32scatter_pd(&p[0].y, mask, vindex, vpyj, 8);
-      _mm512_mask_i32scatter_pd(&p[0].z, mask, vindex, vpzj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].x, mask_a, vindex_a, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].y, mask_a, vindex_a, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&p[0].z, mask_a, vindex_a, vpzj, 8);
 
       vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+
+      // load position
+      auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
+                                        2);
+      auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
+                                          vnp,
+                                          _MM_CMPINT_LT);
+      vqxj = _mm512_i32gather_pd(vindex_b, &q[0].x, 8);
+      vqyj = _mm512_i32gather_pd(vindex_b, &q[0].y, 8);
+      vqzj = _mm512_i32gather_pd(vindex_b, &q[0].z, 8);
+
+      // calc distance
+      auto vdx_b = _mm512_sub_pd(vqxj, vqxi);
+      auto vdy_b = _mm512_sub_pd(vqyj, vqyi);
+      auto vdz_b = _mm512_sub_pd(vqzj, vqzi);
+      vr2 = _mm512_fmadd_pd(vdz_b,
+                            vdz_b,
+                            _mm512_fmadd_pd(vdy_b,
+                                            vdy_b,
+                                            _mm512_mul_pd(vdx_b,
+                                                          vdx_b)));
+
+      // calc force norm
+      vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                          _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                                 vzero, vdf);
+      vdf = _mm512_mask_blend_pd(mask_b, vzero, vdf);
+
+      // send to next
+      vindex_a = vindex_b;
+      mask_a   = mask_b;
+      vdx_a    = vdx_b;
+      vdy_a    = vdy_b;
+      vdz_a    = vdz_b;
     } // end of k loop
 
+    // final write back momentum
+    // write back j particle momentum
+    vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
+    vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
+    vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
+
+    auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
+    auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
+    auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
+
+    vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
+    vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
+    vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
+
+    _mm512_mask_i32scatter_pd(&p[0].x, mask_a, vindex_a, vpxj, 8);
+    _mm512_mask_i32scatter_pd(&p[0].y, mask_a, vindex_a, vpyj, 8);
+    _mm512_mask_i32scatter_pd(&p[0].z, mask_a, vindex_a, vpzj, 8);
+
+    // write back i particle momentum
     p[i].x += _mm512_reduce_add_pd(vpxi);
     p[i].y += _mm512_reduce_add_pd(vpyi);
     p[i].z += _mm512_reduce_add_pd(vpzi);
@@ -918,9 +988,6 @@ print_result(void){
   for (int i = particle_number-5; i < particle_number; i++) {
     printf("%.10f %.10f %.10f\n", p[i].x, p[i].y, p[i].z);
   }
-  // for (int i = 0; i < particle_number; i++) {
-  //   printf("%.10f %.10f %.10f\n", p[i].x, p[i].y, p[i].z);
-  // }
 }
 //----------------------------------------------------------------------
 int

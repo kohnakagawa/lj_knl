@@ -1,4 +1,4 @@
-AOS = aos_pair.out aos_next.out aos_sorted.out aos_intrin_v1.out aos_intrin_v2.out aos_intrin_v1_reactless.out aos_intrin_v2_reactless.out aos_intrin_v3_reactless.out
+AOS = aos_pair.out aos_next.out aos_sorted.out aos_intrin_v1.out aos_intrin_v2.out aos_intrin_v3.out aos_intrin_v1_reactless.out aos_intrin_v2_reactless.out aos_intrin_v3_reactless.out
 SOA = soa_pair.out soa_next.out soa_intrin_v1.out
 LOOP_DEP = knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_aos_v3.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out
 
@@ -31,6 +31,9 @@ aos_intrin_v1.out: force_aos.cpp
 
 aos_intrin_v2.out: force_aos.cpp
 	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v2 $< -o $@
+
+aos_intrin_v3.out: force_aos.cpp
+	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v3 $< -o $@
 
 aos_intrin_v1_reactless.out: force_aos.cpp
 	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v1 -DREACTLESS $< -o $@
@@ -77,14 +80,16 @@ test_aos: $(AOS)
 	./aos_sorted.out > aos_sorted.dat
 	./aos_intrin_v1.out > aos_intrin_v1.dat
 	./aos_intrin_v2.out > aos_intrin_v2.dat
+	./aos_intrin_v3.out > aos_intrin_v3.dat
 	./aos_intrin_v1_reactless.out > aos_intrin_v1_reactless.dat
 	./aos_intrin_v2_reactless.out > aos_intrin_v2_reactless.dat
 	./aos_intrin_v3_reactless.out > aos_intrin_v3_reactless.dat
 	diff aos_pair.dat aos_next.dat
 	diff aos_next.dat aos_sorted.dat
 	diff aos_sorted.dat aos_intrin_v1.dat
-	diff_aos_intrin_v1.dat aos_intrin_v2.dat
-	diff aos_intrin_v2.dat aos_intrin_v1_reactless.dat
+	diff aos_intrin_v1.dat aos_intrin_v2.dat
+	diff aos_intrin_v2.dat aos_intrin_v3.dat
+	diff aos_intrin_v3.dat aos_intrin_v1_reactless.dat
 	diff aos_intrin_v1_reactless.dat aos_intrin_v2_reactless.dat
 	diff aos_intrin_v2_reactless.dat aos_intrin_v3_reactless.dat
 
