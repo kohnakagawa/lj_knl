@@ -704,21 +704,21 @@ main(void) {
   measure(&force_next, "next");
   print_result();
 #elif INTRIN_v1
-  measure(&force_intrin_v1, "intrin_v1");
+  measure(&force_intrin_v1, "with scatter & gather");
   print_result();
 #elif INTRIN_v2
-  measure(&force_intrin_v2, "intrin_v2");
+  measure(&force_intrin_v2, "with scatter & gather, remaining loop opt");
   print_result();
 #elif INTRIN_v3
-  measure(&force_intrin_v3, "intrin_v3");
+  measure(&force_intrin_v3, "with scatter & gather, remaining loop opt, swp");
   print_result();
 #else
   measure(&force_pair, "pair");
   measure(&force_sorted, "sorted");
   measure(&force_next, "next");
-  measure(&force_intrin_v1, "intrin_v1");
-  measure(&force_intrin_v2, "intrin_v2");
-  measure(&force_intrin_v3, "intrin_v3");
+  measure(&force_intrin_v1, "with scatter & gather");
+  measure(&force_intrin_v2, "with scatter & gather, remaining loop opt");
+  measure(&force_intrin_v3, "with scatter & gather, remaining loop opt, swp");
 #endif
   deallocate();
 }

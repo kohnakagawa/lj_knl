@@ -9,8 +9,8 @@
 #include <x86intrin.h>
 #include <sys/stat.h>
 //----------------------------------------------------------------------
-const double density = 1.0;
-// const double density = 0.5;
+// const double density = 1.0;
+const double density = 0.5;
 const int N = 400000;
 #ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
@@ -816,6 +816,187 @@ force_intrin_v4(void) {
   } // end of i loop
 }
 //----------------------------------------------------------------------
+// intrin (without scatter & gather + swp)
+// NOTE: modified from https://github.com/kaityo256/lj_simdstep/blob/master/step6/force.cpp#L742
+void
+force_intrin_v5(void) {
+  const auto pn = particle_number;
+  const auto vzero = _mm512_setzero_pd();
+  const auto vcl2  = _mm512_set1_pd(CL2);
+  const auto vc24  = _mm512_set1_pd(24.0 * dt);
+  const auto vc48  = _mm512_set1_pd(48.0 * dt);
+
+  for (int i = 0; i < pn; i++) {
+    auto vqi = _mm512_castpd256_pd512(_mm256_load_pd(&q[i].x));
+    vqi = _mm512_insertf64x4(vqi, _mm512_castpd512_pd256(vqi), 0x1);
+    auto vpf = _mm512_setzero_pd();
+    const auto kp = pointer[i];
+
+    auto j_b_s = sorted_list[kp + 1], j_a_s = sorted_list[kp    ];
+    auto j_d_s = sorted_list[kp + 3], j_c_s = sorted_list[kp + 2];
+    auto j_f_s = sorted_list[kp + 5], j_e_s = sorted_list[kp + 4];
+    auto j_h_s = sorted_list[kp + 7], j_g_s = sorted_list[kp + 6];
+
+    auto vqj_ba = _mm512_load2_m256d(&q[j_b_s].x, &q[j_a_s].x);
+    auto vqj_dc = _mm512_load2_m256d(&q[j_d_s].x, &q[j_c_s].x);
+    auto vqj_fe = _mm512_load2_m256d(&q[j_f_s].x, &q[j_e_s].x);
+    auto vqj_hg = _mm512_load2_m256d(&q[j_h_s].x, &q[j_g_s].x);
+
+    auto vdq_ba_s = _mm512_sub_pd(vqj_ba, vqi);
+    auto vdq_dc_s = _mm512_sub_pd(vqj_dc, vqi);
+    auto vdq_fe_s = _mm512_sub_pd(vqj_fe, vqi);
+    auto vdq_hg_s = _mm512_sub_pd(vqj_hg, vqi);
+
+    auto vdf      = _mm512_setzero_pd();
+
+    auto vdq_ba_t = _mm512_setzero_pd();
+    auto vdq_dc_t = _mm512_setzero_pd();
+    auto vdq_fe_t = _mm512_setzero_pd();
+    auto vdq_hg_t = _mm512_setzero_pd();
+
+    int j_b_t = 0, j_a_t = 0;
+    int j_d_t = 0, j_c_t = 0;
+    int j_f_t = 0, j_e_t = 0;
+    int j_h_t = 0, j_g_t = 0;
+    const auto np = number_of_partners[i];
+    for (int k = 0; k < (np / 8) * 8; k += 8) {
+      const auto j_b = j_b_s, j_a = j_a_s;
+      const auto j_d = j_d_s, j_c = j_c_s;
+      const auto j_f = j_f_s, j_e = j_e_s;
+      const auto j_h = j_h_s, j_g = j_g_s;
+      auto vdq_ba = vdq_ba_s;
+      auto vdq_dc = vdq_dc_s;
+      auto vdq_fe = vdq_fe_s;
+      auto vdq_hg = vdq_hg_s;
+
+      j_b_s = sorted_list[kp + k + 9 ]; j_a_s = sorted_list[kp + k + 8 ];
+      j_d_s = sorted_list[kp + k + 11]; j_c_s = sorted_list[kp + k + 10];
+      j_f_s = sorted_list[kp + k + 13]; j_e_s = sorted_list[kp + k + 12];
+      j_h_s = sorted_list[kp + k + 15]; j_g_s = sorted_list[kp + k + 14];
+
+      __m512d vdx, vdy, vdz;
+      transpose_4x4x2(vdq_ba, vdq_dc, vdq_fe, vdq_hg,
+                      vdx, vdy, vdz);
+
+      auto vdf_ba = _mm512_permutex_pd(vdf, 0x00);
+      auto vdf_dc = _mm512_permutex_pd(vdf, 0x55);
+      auto vdf_fe = _mm512_permutex_pd(vdf, 0xaa);
+      auto vdf_hg = _mm512_permutex_pd(vdf, 0xff);
+
+      vqj_ba = _mm512_load2_m256d(&q[j_b_s].x, &q[j_a_s].x);
+      vdq_ba_s = _mm512_sub_pd(vqj_ba, vqi);
+      vpf = _mm512_fmadd_pd(vdf_ba, vdq_ba_t, vpf);
+
+      auto vpj_ba_t = _mm512_load2_m256d(&p[j_b_t].x, &p[j_a_t].x);
+      vpj_ba_t = _mm512_fnmadd_pd(vdf_ba, vdq_ba_t, vpj_ba_t);
+      _mm512_store2_m256d(&p[j_b_t].x, &p[j_a_t].x, vpj_ba_t);
+
+      vqj_dc = _mm512_load2_m256d(&q[j_d_s].x, &q[j_c_s].x);
+      vdq_dc_s = _mm512_sub_pd(vqj_dc, vqi);
+      vpf = _mm512_fmadd_pd(vdf_dc, vdq_dc_t, vpf);
+
+      auto vpj_dc_t = _mm512_load2_m256d(&p[j_d_t].x, &p[j_c_t].x);
+      vpj_dc_t = _mm512_fnmadd_pd(vdf_dc, vdq_dc_t, vpj_dc_t);
+      _mm512_store2_m256d(&p[j_d_t].x, &p[j_c_t].x, vpj_dc_t);
+
+      vqj_fe = _mm512_load2_m256d(&q[j_f_s].x, &q[j_e_s].x);
+      vdq_fe_s = _mm512_sub_pd(vqj_fe, vqi);
+      vpf = _mm512_fmadd_pd(vdf_fe, vdq_fe_t, vpf);
+
+      auto vpj_fe_t = _mm512_load2_m256d(&p[j_f_t].x, &p[j_e_t].x);
+      vpj_fe_t = _mm512_fnmadd_pd(vdf_fe, vdq_fe_t, vpj_fe_t);
+      _mm512_store2_m256d(&p[j_f_t].x, &p[j_e_t].x, vpj_fe_t);
+
+      vqj_hg = _mm512_load2_m256d(&q[j_h_s].x, &q[j_g_s].x);
+      vdq_hg_s = _mm512_sub_pd(vqj_hg, vqi);
+      vpf = _mm512_fmadd_pd(vdf_hg, vdq_hg_t, vpf);
+
+      auto vpj_hg_t = _mm512_load2_m256d(&p[j_h_t].x, &p[j_g_t].x);
+      vpj_hg_t = _mm512_fnmadd_pd(vdf_hg, vdq_hg_t, vpj_hg_t);
+      _mm512_store2_m256d(&p[j_h_t].x, &p[j_g_t].x, vpj_hg_t);
+
+      auto vr2 = _mm512_fmadd_pd(vdz,
+                                 vdz,
+                                 _mm512_fmadd_pd(vdy,
+                                                 vdy,
+                                                 _mm512_mul_pd(vdx, vdx)));
+      auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                          _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                                 vzero, vdf);
+
+      j_b_t = j_b; j_a_t = j_a;
+      j_d_t = j_d; j_c_t = j_c;
+      j_f_t = j_f; j_e_t = j_e;
+      j_h_t = j_h; j_g_t = j_g;
+      vdq_ba_t = vdq_ba;
+      vdq_dc_t = vdq_dc;
+      vdq_fe_t = vdq_fe;
+      vdq_hg_t = vdq_hg;
+    } // end of k loop
+    auto vdf_ba = _mm512_permutex_pd(vdf, 0x00);
+    auto vdf_dc = _mm512_permutex_pd(vdf, 0x55);
+    auto vdf_fe = _mm512_permutex_pd(vdf, 0xaa);
+    auto vdf_hg = _mm512_permutex_pd(vdf, 0xff);
+
+    auto vpj_ba_t = _mm512_load2_m256d(&p[j_b_t].x, &p[j_a_t].x);
+    vpj_ba_t = _mm512_fnmadd_pd(vdf_ba, vdq_ba_t, vpj_ba_t);
+    _mm512_store2_m256d(&p[j_b_t].x, &p[j_a_t].x, vpj_ba_t);
+
+    auto vpj_dc_t = _mm512_load2_m256d(&p[j_d_t].x, &p[j_c_t].x);
+    vpj_dc_t = _mm512_fnmadd_pd(vdf_dc, vdq_dc_t, vpj_dc_t);
+    _mm512_store2_m256d(&p[j_d_t].x, &p[j_c_t].x, vpj_dc_t);
+
+    auto vpj_fe_t = _mm512_load2_m256d(&p[j_f_t].x, &p[j_e_t].x);
+    vpj_fe_t = _mm512_fnmadd_pd(vdf_fe, vdq_fe_t, vpj_fe_t);
+    _mm512_store2_m256d(&p[j_f_t].x, &p[j_e_t].x, vpj_fe_t);
+
+    auto vpj_hg_t = _mm512_load2_m256d(&p[j_h_t].x, &p[j_g_t].x);
+    vpj_hg_t = _mm512_fnmadd_pd(vdf_hg, vdq_hg_t, vpj_hg_t);
+    _mm512_store2_m256d(&p[j_h_t].x, &p[j_g_t].x, vpj_hg_t);
+
+    auto vpi = _mm512_castpd256_pd512(_mm256_load_pd(&p[i].x));
+
+    vpf = _mm512_fmadd_pd(vdf_ba, vdq_ba_t, vpf);
+    vpf = _mm512_fmadd_pd(vdf_dc, vdq_dc_t, vpf);
+    vpf = _mm512_fmadd_pd(vdf_fe, vdq_fe_t, vpf);
+    vpf = _mm512_fmadd_pd(vdf_hg, vdq_hg_t, vpf);
+    vpf = _mm512_add_pd(vpf,
+                        _mm512_permutexvar_pd(_mm512_set_epi64(0x3, 0x2, 0x1, 0x0, 0x7, 0x6, 0x5, 0x4),
+                                              vpf));
+
+    vpi = _mm512_add_pd(vpf, vpi);
+
+
+    _mm256_store_pd(&p[i].x, _mm512_castpd512_pd256(vpi));
+
+    // remaining loop
+    double pfx = 0.0, pfy = 0.0, pfz = 0.0;
+    auto qx_key = q[i].x, qy_key = q[i].y, qz_key = q[i].z;
+#pragma novector
+    for (int k = (np / 8) * 8; k < np; k++) {
+      const auto j = sorted_list[kp + k];
+      const auto dx = q[j].x - qx_key;
+      const auto dy = q[j].y - qy_key;
+      const auto dz = q[j].z - qz_key;
+      const auto r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 > CL2) continue;
+      const auto r6 = r2 * r2 * r2;
+      const auto df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+      pfx    += df * dx;
+      pfy    += df * dy;
+      pfz    += df * dz;
+      p[j].x -= df * dx;
+      p[j].y -= df * dy;
+      p[j].z -= df * dz;
+    } // end of k loop
+    p[i].x += pfx;
+    p[i].y += pfy;
+    p[i].z += pfz;
+  } // end of i loop
+}
+//----------------------------------------------------------------------
 void
 force_intrin_v1_reactless(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -1122,26 +1303,38 @@ main(void) {
   measure(&force_sorted, "sorted");
   print_result();
 #elif defined INTRIN_v1 && defined REACTLESS
-  measure(&force_intrin_v1_reactless, "intrin_v1_reactless");
+  measure(&force_intrin_v1_reactless, "with gather, reactless");
   print_result();
 #elif defined INTRIN_v2 && defined REACTLESS
-  measure(&force_intrin_v2_reactless, "intrin_v2_reactless");
+  measure(&force_intrin_v2_reactless, "without gather, reactless");
   print_result();
 #elif defined INTRIN_v3 && defined REACTLESS
-  measure(&force_intrin_v3_reactless, "intrin_v3_reactless");
+  measure(&force_intrin_v3_reactless, "with gather, reactless, remaining loop opt");
   print_result();
 #elif INTRIN_v1
-  measure(&force_intrin_v1, "intrin_v1");
+  measure(&force_intrin_v1, "with scatter & gather");
   print_result();
 #elif INTRIN_v2
-  measure(&force_intrin_v2, "intrin_v2");
+  measure(&force_intrin_v2, "with scatter & gather, remaining loop opt");
   print_result();
 #elif INTRIN_v3
-  measure(&force_intrin_v3, "intrin_v3");
+  measure(&force_intrin_v3, "with scatter & gather, remaining loop opt, swp");
   print_result();
 #elif INTRIN_v4
-  measure(&force_intrin_v4, "intrin_v4");
+  measure(&force_intrin_v4, "without scatter & gather");
   print_result();
+#elif INTRIN_v5
+  measure(&force_intrin_v5, "without scatter & gather, swp");
+  print_result();
+#else
+  measure(&force_pair, "pair");
+  measure(&force_sorted, "sorted");
+  measure(&force_next, "next");
+  measure(&force_intrin_v1, "with scatter & gather");
+  measure(&force_intrin_v2, "with scatter & gather, remaining loop opt");
+  measure(&force_intrin_v3, "with scatter & gather, remaining loop opt, swp");
+  measure(&force_intrin_v4, "without scatter & gather");
+  measure(&force_intrin_v5, "without scatter & gather, swp");
 #endif
   deallocate();
 }

@@ -1,33 +1,46 @@
-@Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz
+@ Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz
+@ rscgrp=interactive-cache
 
-#density = 1.0
+# AoS
+## density = 1
+N=119164, pair                                            39162 [ms]
+N=119164, sorted                                          31736 [ms]
+N=119164, next                                            28881 [ms]
+N=119164, with scatter & gather                           13047 [ms]
+N=119164, with scatter & gather, remaining loop opt       11093 [ms]
+N=119164, with scatter & gather, remaining loop opt, swp  10067 [ms]
+N=119164, without scatter & gather                        11507 [ms]
+N=119164, without scatter & gather, swp                   11508 [ms]
+N=119164, with gather, reactless                          12154 [ms]
+N=119164, without gather, reactless                       18046 [ms]
+N=119164, with gather, reactless, remaining loop opt      11634 [ms]
 
-## aos
-N=119164, pair 2390 [ms]
-N=119164, next 3873 [ms]
-N=119164, sorted 1230 [ms]
-N=119164, sorted_reactless 393 [ms]
-N=119164, intrin_v1 130 [ms]
-N=119164, intrin_v2 139 [ms]
-N=119164, intrin_v3 124 [ms]
+## density = 0.5
+N=62500, pair                                              9946 [ms]
+N=62500, sorted                                            8557 [ms]
+N=62500, next                                              7788 [ms]
+N=62500, with scatter & gather                             3621 [ms]
+N=62500, with scatter & gather, remaining loop opt         3505 [ms]
+N=62500, with scatter & gather, remaining loop opt, swp    2951 [ms]
+N=62500, without scatter & gather                          3101 [ms]
+N=62500, without scatter & gather, swp                     3305 [ms]
+N=62500, with gather, reactless                            3720 [ms]
+N=62500, without gather, reactless                         5314 [ms]
+N=62500, with gather, reactless, remaining loop opt        3452 [ms]
 
-## soa
-N=119164, pair 2979 [ms]
-N=119164, next 1877 [ms]
-N=119164, intrin_v1 135 [ms]
+# SoA
+## density = 1
+N=119164, pair                                            62015 [ms]
+N=119164, sorted                                          35002 [ms]
+N=119164, next                                            28897 [ms]
+N=119164, with scatter & gather                           12188 [ms]
+N=119164, with scatter & gather, remaining loop opt       10124 [ms]
+N=119164, with scatter & gather, remaining loop opt, swp  10331 [ms]
 
-#density = 0.5
-
-## aos
-N=62500, pair 447 [ms]
-N=62500, next 1956 [ms]
-N=62500, sorted 318 [ms]
-N=62500, sorted_reactless 112 [ms]
-N=62500, intrin_v1 40 [ms]
-N=62500, intrin_v2 46 [ms]
-N=62500, intrin_v3 35 [ms]
-
-## soa
-N=62500, pair 521 [ms]
-N=62500, next 868 [ms]
-N=62500, intrin_v1 40 [ms]
+## density = 0.5
+N=62500, pair                                             14981 [ms]
+N=62500, sorted                                            9354 [ms]
+N=62500, next                                              7912 [ms]
+N=62500, with scatter & gather                             3231 [ms]
+N=62500, with scatter & gather, remaining loop opt         3023 [ms]
+N=62500, with scatter & gather, remaining loop opt, swp    3030 [ms]
