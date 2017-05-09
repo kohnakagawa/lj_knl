@@ -1,9 +1,22 @@
 @ Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz
 @ rscgrp=interactive-cache
-@ density = 0.5
 @ AoS
-@ perf version 
+@ perf version 3.10.0-327.el7.x86_64.debug
 
+@ density = 1
+# instructions
+N=119164, with scatter & gather, remaining loop opt        7,061,879,492
+N=119164, with scatter & gather, remaining loop opt, swp   7,506,229,898  (x 1.06)
+N=119164, without scatter & gather                         11,230,409,150
+N=119164, without scatter & gather, swp                    17,676,544,281 (x 1.57)
+
+# inst per cycle
+N=119164, with scatter & gather, remaining loop opt        0.44
+N=119164, with scatter & gather, remaining loop opt, swp   0.52 (x 1.18)
+N=119164, without scatter & gather                         0.68
+N=119164, without scatter & gather, swp                    1.07 (x 1.57)
+
+@ density = 0.5
 # instructions
 N=62500, with scatter & gather, remaining loop opt         2,416,114,879
 N=62500, with scatter & gather, remaining loop opt, swp    2,516,463,710 (x 1.04)
@@ -21,3 +34,18 @@ N=62500, with scatter & gather, remaining loop opt         2.624 % of all cache 
 N=62500, with scatter & gather, remaining loop opt, swp    2.473 % of all cache refs
 N=62500, without scatter & gather                          2.360 % of all cache refs
 N=62500, without scatter & gather, swp                     2.729 % of all cache refs
+
+c.f. (AVX2)
+@ Intel(R) Xeon(R) CPU E5-1650 v3 @ 3.50GHz
+@ AoS
+@ perf version 2.6.32-573.26.1.el6.x86_64.debug
+@ https://github.com/kaityo256/lj_simdstep/tree/master/step5
+
+@ density = 0.5
+# instructions
+N=62500, sorted_intrin                                     4,532,796,762
+N=62500, sorted_swp_intrin                                 7,170,615,066 (x 1.58)
+
+# inst per cycle
+N=62500, sorted_intrin                                     1.43
+N=62500, sorted_swp_intrin                                 2.50 (x 1.75)
