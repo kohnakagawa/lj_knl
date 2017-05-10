@@ -864,7 +864,7 @@ main(void) {
   measure(&force_intrin_v1_reactless, "with gather, reactless");
   print_result();
 #elif defined INTRIN_v2 && defined REACTLESS
-  measure(&force_intrin_v2_reactless, "without gather, reactless");
+  measure(&force_intrin_v2_reactless, "with gather, reactless, remaining loop opt");
   print_result();
 #elif INTRIN_v1
   measure(&force_intrin_v1, "with scatter & gather");

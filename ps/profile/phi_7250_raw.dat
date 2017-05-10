@@ -9,6 +9,8 @@ N=119164, next                                          28514 [ms]
 N=119164, with scatter & gather                         10728 [ms]
 N=119164, with scatter & gather, remaining loop opt      8125 [ms]
 N=119164, with scatter & gather, remaining loop opt, swp 6810 [ms] (x4.6 sorted)
+N=119164, with gather, reactless                        10024 [ms]
+N=119164, with gather, reactless, remaining loop opt     6069 [ms]
 
 ## density = 0.5
 N=62500, pair                                            9918 [ms]
@@ -17,3 +19,5 @@ N=62500, next                                            7654 [ms]
 N=62500, with scatter & gather                           3196 [ms]
 N=62500, with scatter & gather, remaining loop opt       2607 [ms]
 N=62500, with scatter & gather, remaining loop opt, swp  2136 [ms] (x4.0 sorted)
+N=62500, with gather, reactless                          3672 [ms]
+N=62500, with gather, reactless, remaining loop opt      2019 [ms]
