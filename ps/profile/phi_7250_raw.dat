@@ -1,0 +1,15 @@
+@ Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz
+@ rscgrp=interactive-cache
+
+# AoS
+## density = 1
+
+
+
+## density = 0.5
+N=62500, pair                                            9918 [ms]
+N=62500, sorted                                          8536 [ms]
+N=62500, next                                            7654 [ms]
+N=62500, with scatter & gather                           3196 [ms]
+N=62500, with scatter & gather, remaining loop opt       2607 [ms]
+N=62500, with scatter & gather, remaining loop opt, swp  2136 [ms]
