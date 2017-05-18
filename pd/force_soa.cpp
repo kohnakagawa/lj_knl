@@ -26,6 +26,11 @@ double* px = nullptr;
 double* py = nullptr;
 double* pz = nullptr;
 
+const int D = 3;
+enum {X, Y, Z};
+double q[D][N];
+double p[D][N];
+
 int particle_number = 0;
 int number_of_pairs = 0;
 int* number_of_partners = nullptr;
@@ -250,6 +255,39 @@ force_sorted(void) {
     pz[i] += pfz;
   } // end of i loop
 }
+//----------------------------------------------------------------------
+void
+force_sorted_2d(void) {
+  const auto pn = particle_number;
+  for (int i = 0; i < pn; i++) {
+    const auto qx_key = q[X][i];
+    const auto qy_key = q[Y][i];
+    const auto qz_key = q[Z][i];
+    const auto np = number_of_partners[i];
+    double pfx = 0, pfy = 0, pfz = 0;
+    const auto kp = pointer[i];
+    for (int k = 0; k < np; k++) {
+      const auto j = sorted_list[kp + k];
+      const auto dx = q[X][j] - qx_key;
+      const auto dy = q[Y][j] - qy_key;
+      const auto dz = q[Z][j] - qz_key;
+      const auto r2 = (dx*dx + dy*dy + dz*dz);
+      if (r2 > CL2) continue;
+      const auto r6 = r2*r2*r2;
+      const auto df = ((24.0 * r6 - 48.0)/(r6 * r6 * r2)) * dt;
+      pfx += df*dx;
+      pfy += df*dy;
+      pfz += df*dz;
+      p[X][j] -= df*dx;
+      p[Y][j] -= df*dy;
+      p[Z][j] -= df*dz;
+    } // end of k loop
+    p[X][i] += pfx;
+    p[Y][i] += pfy;
+    p[Z][i] += pfz;
+  } // end of i loop
+}
+
 //----------------------------------------------------------------------
 void
 force_next(void) {
@@ -683,6 +721,14 @@ int
 main(void) {
   allocate();
   init();
+  for(int i=0;i<particle_number;i++){
+    q[X][i] = qx[i];
+    q[Y][i] = qy[i];
+    q[Z][i] = qz[i];
+    p[X][i] = px[i];
+    p[Y][i] = py[i];
+    p[Z][i] = pz[i];
+  }
   struct stat st;
   int ret = stat(pairlist_cache_file_name, &st);
   if (ret == 0) {
@@ -700,6 +746,17 @@ main(void) {
 #elif SORTED
   measure(&force_sorted, "sorted");
   print_result();
+#elif SORTED_2D
+  measure(&force_sorted_2d, "sorted_2d");
+  for(int i=0;i<particle_number;i++){
+    qx[i] = q[X][i];
+    qy[i] = q[Y][i];
+    qz[i] = q[Z][i];
+    px[i] = p[X][i];
+    py[i] = p[Y][i];
+    pz[i] = p[Z][i];
+  }
+  print_result();
 #elif NEXT
   measure(&force_next, "next");
   print_result();
@@ -715,6 +772,7 @@ main(void) {
 #else
   measure(&force_pair, "pair");
   measure(&force_sorted, "sorted");
+  measure(&force_sorted_2d, "sorted_2d");
   measure(&force_next, "next");
   measure(&force_intrin_v1, "with scatter & gather");
   measure(&force_intrin_v2, "with scatter & gather, remaining loop opt");
