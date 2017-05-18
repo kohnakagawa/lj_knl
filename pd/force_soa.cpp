@@ -18,13 +18,13 @@ const double dt = 0.001;
 
 const char* pairlist_cache_file_name = "pair.dat";
 
-double* qx = nullptr;
-double* qy = nullptr;
-double* qz = nullptr;
+double* __restrict qx = nullptr;
+double* __restrict qy = nullptr;
+double* __restrict qz = nullptr;
 
-double* px = nullptr;
-double* py = nullptr;
-double* pz = nullptr;
+double* __restrict px = nullptr;
+double* __restrict py = nullptr;
+double* __restrict pz = nullptr;
 
 const int D = 3;
 enum {X, Y, Z};
@@ -33,12 +33,12 @@ double p[D][N];
 
 int particle_number = 0;
 int number_of_pairs = 0;
-int* number_of_partners = nullptr;
+int* __restrict number_of_partners = nullptr;
 int i_particles[MAX_PAIRS];
 int j_particles[MAX_PAIRS];
-int32_t* pointer = nullptr;
+int32_t* __restrict pointer = nullptr;
 int32_t pointer2[N];
-int* sorted_list = nullptr;
+int* __restrict sorted_list = nullptr;
 
 const double CUTOFF_LENGTH = 3.0;
 const double SEARCH_LENGTH = 3.3;

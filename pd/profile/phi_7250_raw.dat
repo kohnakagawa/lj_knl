@@ -44,3 +44,22 @@ N=62500, next                                              7912 [ms]
 N=62500, with scatter & gather                             3231 [ms]
 N=62500, with scatter & gather, remaining loop opt         3023 [ms]
 N=62500, with scatter & gather, remaining loop opt, swp    3030 [ms]
+
+@ use restrict pointer
+## density = 1
+N=119164, pair                                            44398 [ms]
+N=119164, sorted                                          11139 [ms]
+N=119164, sorted_2d                                       10701 [ms]
+N=119164, next                                            28991 [ms]
+N=119164, with scatter & gather                           11660 [ms]
+N=119164, with scatter & gather, remaining loop opt        9938 [ms]
+N=119164, with scatter & gather, remaining loop opt, swp  10334 [ms]
+
+## density = 0.5
+N=62500, pair                                             11187 [ms]
+N=62500, sorted                                            3277 [ms]
+N=62500, sorted_2d                                         3125 [ms]
+N=62500, next                                              7656 [ms]
+N=62500, with scatter & gather                             3016 [ms]
+N=62500, with scatter & gather, remaining loop opt         2963 [ms]
+N=62500, with scatter & gather, remaining loop opt, swp    2971 [ms]
