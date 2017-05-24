@@ -9,8 +9,8 @@
 #include <x86intrin.h>
 #include <sys/stat.h>
 //----------------------------------------------------------------------
-// const double density = 1.0;
-const double density = 0.5;
+ const double density = 1.0;
+//const double density = 0.5;
 const int N = 400000;
 #ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
@@ -31,6 +31,10 @@ typedef double4 Vec;
 
 Vec* q = nullptr;
 Vec* p = nullptr;
+enum {X = 0, Y, Z, W, PX, PY, PZ, WX};
+__attribute__((aligned(64))) double z[N][8];
+typedef double v4df __attribute__((vector_size(32)));
+typedef double v8df __attribute__((vector_size(64)));
 
 int particle_number = 0;
 int number_of_pairs = 0;
@@ -218,6 +222,30 @@ init(void) {
     p[i].x = 0.0;
     p[i].y = 0.0;
     p[i].z = 0.0;
+  }
+}
+//----------------------------------------------------------------------
+void
+copy_to_z(void){
+  for(int i=0;i<particle_number;i++){
+    z[i][X] = q[i].x;
+    z[i][Y] = q[i].y;
+    z[i][Z] = q[i].z;
+    z[i][PX] = p[i].x;
+    z[i][PY] = p[i].y;
+    z[i][PZ] = p[i].z;
+  }
+}
+//----------------------------------------------------------------------
+void
+copy_from_z(void){
+  for(int i=0;i<particle_number;i++){
+    q[i].x = z[i][X];
+    q[i].y = z[i][Y];
+    q[i].z = z[i][Z];
+    p[i].x = z[i][PX];
+    p[i].y = z[i][PY];
+    p[i].z = z[i][PZ];
   }
 }
 //----------------------------------------------------------------------
@@ -1225,6 +1253,323 @@ force_intrin_v3_reactless(void) {
 }
 //----------------------------------------------------------------------
 void
+force_sorted_z_intrin(void) {
+  const int pn = particle_number;
+  const v8df vzero = _mm512_setzero_pd();
+  const v8df vcl2 = _mm512_set1_pd(CL2);
+  const v8df vc24 = _mm512_set1_pd(24.0*dt);
+  const v8df vc48 = _mm512_set1_pd(48.0*dt);
+  const __m512i idx = _mm512_set_epi64(3,2,1,0,7,6,5,4);
+  const __m512i idx_q = _mm512_set_epi64(11,10,9,8,3,2,1,0);
+  const __m512i idx_p = _mm512_set_epi64(15,14,13,12,7,6,5,4);
+  const __m512i idx_f12 = _mm512_set_epi64(1,1,1,1,0,0,0,0);
+  const __m512i idx_f34 = _mm512_set_epi64(3,3,3,3,2,2,2,2);
+  const __m512i idx_f56 = _mm512_set_epi64(5,5,5,5,4,4,4,4);
+  const __m512i idx_f78 = _mm512_set_epi64(7,7,7,7,6,6,6,6);
+  const __m512i idx_0123 = _mm512_set_epi64(3,2,1,0,3,2,1,0);
+  const __m512i idx2 = _mm512_set_epi64(13,9,12,8,5,1,4,0);
+  const __m512i idx3 = _mm512_set_epi64(15,11,14,10,7,3,6,2);
+  const __mmask8 khigh = 16+32+64+128;
+  for (int i = 0; i < pn; i++) {
+    const int np = number_of_partners[i];
+    const int kp = pointer[i];
+    v8df vzi = _mm512_loadu_pd((double*)(z+i));
+    v8df vqi = _mm512_permutexvar_pd(idx_0123, vzi);;
+    v8df vpi = _mm512_setzero_pd();
+    for (int k = 0; k < (np/8*8); k+=8) {
+      const int j_1 = sorted_list[kp + k];
+      const int j_2 = sorted_list[kp + k + 1];
+      const int j_3 = sorted_list[kp + k + 2];
+      const int j_4 = sorted_list[kp + k + 3];
+      const int j_5 = sorted_list[kp + k + 4];
+      const int j_6 = sorted_list[kp + k + 5];
+      const int j_7 = sorted_list[kp + k + 6];
+      const int j_8 = sorted_list[kp + k + 7];
+      v8df vzj_1 = _mm512_loadu_pd((double*)(z+j_1));
+      v8df vzj_2 = _mm512_loadu_pd((double*)(z+j_2));
+      v8df vqj_12= _mm512_permutex2var_pd(vzj_1, idx_q, vzj_2);
+      v8df vpj_12= _mm512_permutex2var_pd(vzj_1, idx_p, vzj_2);
+      v8df vdq_12 = vqj_12 - vqi;
+
+      v8df vzj_3 = _mm512_loadu_pd((double*)(z+j_3));
+      v8df vzj_4 = _mm512_loadu_pd((double*)(z+j_4));
+      v8df vqj_34= _mm512_permutex2var_pd(vzj_3, idx_q, vzj_4);
+      v8df vpj_34= _mm512_permutex2var_pd(vzj_3, idx_p, vzj_4);
+      v8df vdq_34 = vqj_34 - vqi;
+
+      v8df vzj_5 = _mm512_loadu_pd((double*)(z+j_5));
+      v8df vzj_6 = _mm512_loadu_pd((double*)(z+j_6));
+      v8df vqj_56= _mm512_permutex2var_pd(vzj_5, idx_q, vzj_6);
+      v8df vpj_56= _mm512_permutex2var_pd(vzj_5, idx_p, vzj_6);
+      v8df vdq_56 = vqj_56 - vqi;
+
+      v8df vzj_7 = _mm512_loadu_pd((double*)(z+j_7));
+      v8df vzj_8 = _mm512_loadu_pd((double*)(z+j_8));
+      v8df vqj_78= _mm512_permutex2var_pd(vzj_7, idx_q, vzj_8);
+      v8df vpj_78= _mm512_permutex2var_pd(vzj_7, idx_p, vzj_8);
+      v8df vdq_78 = vqj_78 - vqi;
+
+      v8df tmp0 = _mm512_unpacklo_pd(vdq_12, vdq_34);
+      v8df tmp1 = _mm512_unpackhi_pd(vdq_12, vdq_34);
+      v8df tmp2 = _mm512_unpacklo_pd(vdq_56, vdq_78);
+      v8df tmp3 = _mm512_unpackhi_pd(vdq_56, vdq_78);
+
+      v8df vdx = _mm512_permutex2var_pd(tmp0, idx2, tmp2);
+      v8df vdy = _mm512_permutex2var_pd(tmp1, idx2, tmp3);
+      v8df vdz = _mm512_permutex2var_pd(tmp0, idx3, tmp2);
+
+      v8df vr2 = vdx*vdx + vdy*vdy + vdz*vdz;
+      v8df vr6 = vr2 * vr2 * vr2;
+      v8df vdf = (vc24 * vr6 - vc48) / (vr6 * vr6 * vr2);
+
+      __mmask8 kcmp = _mm512_cmp_pd_mask(vr2,vcl2, _CMP_GT_OS);
+      vdf = _mm512_mask_blend_pd(kcmp, vdf, vzero);
+      v8df vdf_12 = _mm512_permutexvar_pd(idx_f12, vdf);
+      v8df vdf_34 = _mm512_permutexvar_pd(idx_f34, vdf);
+      v8df vdf_56 = _mm512_permutexvar_pd(idx_f56, vdf);
+      v8df vdf_78 = _mm512_permutexvar_pd(idx_f78, vdf);
+      vpj_12 -= vdf_12 * vdq_12;
+      vpj_34 -= vdf_34 * vdq_34;
+      vpj_56 -= vdf_56 * vdq_56;
+      vpj_78 -= vdf_78 * vdq_78;
+      vpi += vdf_12 * vdq_12;
+      vpi += vdf_34 * vdq_34;
+      vpi += vdf_56 * vdq_56;
+      vpi += vdf_78 * vdq_78;
+      v8df vpj_11 = _mm512_permutexvar_pd(idx_0123, vpj_12);
+      v8df vpj_33 = _mm512_permutexvar_pd(idx_0123, vpj_34);
+      v8df vpj_55 = _mm512_permutexvar_pd(idx_0123, vpj_56);
+      v8df vpj_77 = _mm512_permutexvar_pd(idx_0123, vpj_78);
+      _mm512_mask_store_pd((double*)(z+j_1), khigh, vpj_11);
+      _mm512_mask_store_pd((double*)(z+j_3), khigh, vpj_33);
+      _mm512_mask_store_pd((double*)(z+j_5), khigh, vpj_55);
+      _mm512_mask_store_pd((double*)(z+j_7), khigh, vpj_77);
+      _mm512_mask_store_pd((double*)(z+j_2), khigh, vpj_12);
+      _mm512_mask_store_pd((double*)(z+j_4), khigh, vpj_34);
+      _mm512_mask_store_pd((double*)(z+j_6), khigh, vpj_56);
+      _mm512_mask_store_pd((double*)(z+j_8), khigh, vpj_78);
+    }
+    v4df vpi_low = _mm512_extractf64x4_pd(vpi, 0);
+    v4df vpi_high = _mm512_extractf64x4_pd(vpi, 1);
+    v4df vdpi = vpi_low + vpi_high;
+    v8df vzdpi = _mm512_insertf64x4(vzero, vdpi, 1); 
+    vzi += vzdpi;
+    _mm512_store_pd((double*)(z+i), vzi);
+    const double qix = z[i][X];
+    const double qiy = z[i][Y];
+    const double qiz = z[i][Z];
+    double pfx = 0;
+    double pfy = 0;
+    double pfz = 0;
+    for (int k = (np/8*8); k < np; k++) {
+      const int j = sorted_list[kp + k];
+      double dx = z[j][X] - qix;
+      double dy = z[j][Y] - qiy;
+      double dz = z[j][Z] - qiz;
+      double r2 = (dx * dx + dy * dy + dz * dz);
+      double r6 = r2 * r2 * r2;
+      double df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+      if (r2 > CL2) df=0.0;
+      pfx += df * dx;
+      pfy += df * dy;
+      pfz += df * dz;
+      z[j][PX] -= df * dx;
+      z[j][PY] -= df * dy;
+      z[j][PZ] -= df * dz;
+    }
+    z[i][PX] += pfx;
+    z[i][PY] += pfy;
+    z[i][PZ] += pfz;
+  }
+}
+//----------------------------------------------------------------------
+void
+force_sorted_z_intrin_swp(void) {
+  const int pn = particle_number;
+  const v8df vzero = _mm512_setzero_pd();
+  const v8df vcl2 = _mm512_set1_pd(CL2);
+  const v8df vc24 = _mm512_set1_pd(24.0*dt);
+  const v8df vc48 = _mm512_set1_pd(48.0*dt);
+  const __m512i idx = _mm512_set_epi64(3,2,1,0,7,6,5,4);
+  const __m512i idx_q = _mm512_set_epi64(11,10,9,8,3,2,1,0);
+  const __m512i idx_p = _mm512_set_epi64(15,14,13,12,7,6,5,4);
+  const __m512i idx_f12 = _mm512_set_epi64(1,1,1,1,0,0,0,0);
+  const __m512i idx_f34 = _mm512_set_epi64(3,3,3,3,2,2,2,2);
+  const __m512i idx_f56 = _mm512_set_epi64(5,5,5,5,4,4,4,4);
+  const __m512i idx_f78 = _mm512_set_epi64(7,7,7,7,6,6,6,6);
+  const __m512i idx_0123 = _mm512_set_epi64(3,2,1,0,3,2,1,0);
+  const __m512i idx2 = _mm512_set_epi64(13,9,12,8,5,1,4,0);
+  const __m512i idx3 = _mm512_set_epi64(15,11,14,10,7,3,6,2);
+  const __mmask8 khigh = 16+32+64+128;
+  for (int i = 0; i < pn; i++) {
+    const int np = number_of_partners[i];
+    const int kp = pointer[i];
+    v8df vzi = _mm512_loadu_pd((double*)(z+i));
+    v8df vqi = _mm512_permutexvar_pd(idx_0123, vzi);;
+    v8df vpi = _mm512_setzero_pd();
+    int ja_1 = sorted_list[kp];
+    int ja_2 = sorted_list[kp + 1];
+    int ja_3 = sorted_list[kp + 2];
+    int ja_4 = sorted_list[kp + 3];
+    int ja_5 = sorted_list[kp + 4];
+    int ja_6 = sorted_list[kp + 5];
+    int ja_7 = sorted_list[kp + 6];
+    int ja_8 = sorted_list[kp + 7];
+    v8df vzja_1 = _mm512_loadu_pd((double*)(z+ja_1));
+    v8df vzja_2 = _mm512_loadu_pd((double*)(z+ja_2));
+    v8df vzja_3 = _mm512_loadu_pd((double*)(z+ja_3));
+    v8df vzja_4 = _mm512_loadu_pd((double*)(z+ja_4));
+    v8df vzja_5 = _mm512_loadu_pd((double*)(z+ja_5));
+    v8df vzja_6 = _mm512_loadu_pd((double*)(z+ja_6));
+    v8df vzja_7 = _mm512_loadu_pd((double*)(z+ja_7));
+    v8df vzja_8 = _mm512_loadu_pd((double*)(z+ja_8));
+
+    v8df vqj_12= _mm512_permutex2var_pd(vzja_1, idx_q, vzja_2);
+    v8df vpja_12= _mm512_permutex2var_pd(vzja_1, idx_p, vzja_2);
+    v8df vdqa_12 = vqj_12 - vqi;
+    v8df vqj_34= _mm512_permutex2var_pd(vzja_3, idx_q, vzja_4);
+    v8df vpja_34= _mm512_permutex2var_pd(vzja_3, idx_p, vzja_4);
+    v8df vdqa_34 = vqj_34 - vqi;
+    v8df vqj_56= _mm512_permutex2var_pd(vzja_5, idx_q, vzja_6);
+    v8df vpja_56= _mm512_permutex2var_pd(vzja_5, idx_p, vzja_6);
+    v8df vdqa_56 = vqj_56 - vqi;
+    v8df vqj_78= _mm512_permutex2var_pd(vzja_7, idx_q, vzja_8);
+    v8df vpja_78= _mm512_permutex2var_pd(vzja_7, idx_p, vzja_8);
+    v8df vdqa_78 = vqj_78 - vqi;
+
+
+    for (int k = 0; k < (np/8*8); k+=8) {
+      const int j_1 = ja_1;
+      const int j_2 = ja_2;
+      const int j_3 = ja_3;
+      const int j_4 = ja_4;
+      const int j_5 = ja_5;
+      const int j_6 = ja_6;
+      const int j_7 = ja_7;
+      const int j_8 = ja_8;
+      v8df vzj_1 = vzja_1;
+      v8df vzj_2 = vzja_2;
+      v8df vzj_3 = vzja_3;
+      v8df vzj_4 = vzja_4;
+      v8df vzj_5 = vzja_5;
+      v8df vzj_6 = vzja_6;
+      v8df vzj_7 = vzja_7;
+      v8df vzj_8 = vzja_8;
+      v8df vpj_12 = vpja_12;
+      v8df vpj_34 = vpja_34;
+      v8df vpj_56 = vpja_56;
+      v8df vpj_78 = vpja_78;
+      v8df vdq_12 = vdqa_12;
+      v8df vdq_34 = vdqa_34;
+      v8df vdq_56 = vdqa_56;
+      v8df vdq_78 = vdqa_78;
+
+      ja_1 = sorted_list[kp + k + 8];
+      ja_2 = sorted_list[kp + k + 1 + 8];
+      ja_3 = sorted_list[kp + k + 2 + 8];
+      ja_4 = sorted_list[kp + k + 3 + 8];
+      ja_5 = sorted_list[kp + k + 4 + 8];
+      ja_6 = sorted_list[kp + k + 5 + 8];
+      ja_7 = sorted_list[kp + k + 6 + 8];
+      ja_8 = sorted_list[kp + k + 7 + 8];
+
+
+      v8df tmp0 = _mm512_unpacklo_pd(vdq_12, vdq_34);
+      v8df tmp1 = _mm512_unpackhi_pd(vdq_12, vdq_34);
+      v8df tmp2 = _mm512_unpacklo_pd(vdq_56, vdq_78);
+      v8df tmp3 = _mm512_unpackhi_pd(vdq_56, vdq_78);
+
+      v8df vdx = _mm512_permutex2var_pd(tmp0, idx2, tmp2);
+      v8df vdy = _mm512_permutex2var_pd(tmp1, idx2, tmp3);
+      v8df vdz = _mm512_permutex2var_pd(tmp0, idx3, tmp2);
+
+      v8df vr2 = vdx*vdx + vdy*vdy + vdz*vdz;
+      v8df vr6 = vr2 * vr2 * vr2;
+      v8df vdf = (vc24 * vr6 - vc48) / (vr6 * vr6 * vr2);
+      vzja_1 = _mm512_loadu_pd((double*)(z+ja_1));
+      vzja_2 = _mm512_loadu_pd((double*)(z+ja_2));
+      vzja_3 = _mm512_loadu_pd((double*)(z+ja_3));
+      vzja_4 = _mm512_loadu_pd((double*)(z+ja_4));
+      vzja_5 = _mm512_loadu_pd((double*)(z+ja_5));
+      vzja_6 = _mm512_loadu_pd((double*)(z+ja_6));
+      vzja_7 = _mm512_loadu_pd((double*)(z+ja_7));
+      vzja_8 = _mm512_loadu_pd((double*)(z+ja_8));
+
+      v8df vqja_12= _mm512_permutex2var_pd(vzja_1, idx_q, vzja_2);
+      vpja_12= _mm512_permutex2var_pd(vzja_1, idx_p, vzja_2);
+      vdqa_12 = vqja_12 - vqi;
+      v8df vqj_34= _mm512_permutex2var_pd(vzja_3, idx_q, vzja_4);
+      vpja_34= _mm512_permutex2var_pd(vzja_3, idx_p, vzja_4);
+      vdqa_34 = vqj_34 - vqi;
+      v8df vqj_56= _mm512_permutex2var_pd(vzja_5, idx_q, vzja_6);
+      vpja_56= _mm512_permutex2var_pd(vzja_5, idx_p, vzja_6);
+      vdqa_56 = vqj_56 - vqi;
+      v8df vqj_78= _mm512_permutex2var_pd(vzja_7, idx_q, vzja_8);
+      vpja_78= _mm512_permutex2var_pd(vzja_7, idx_p, vzja_8);
+      vdqa_78 = vqj_78 - vqi;
+
+      __mmask8 kcmp = _mm512_cmp_pd_mask(vr2,vcl2, _CMP_GT_OS);
+      vdf = _mm512_mask_blend_pd(kcmp, vdf, vzero);
+      v8df vdf_12 = _mm512_permutexvar_pd(idx_f12, vdf);
+      v8df vdf_34 = _mm512_permutexvar_pd(idx_f34, vdf);
+      v8df vdf_56 = _mm512_permutexvar_pd(idx_f56, vdf);
+      v8df vdf_78 = _mm512_permutexvar_pd(idx_f78, vdf);
+      vpj_12 -= vdf_12 * vdq_12;
+      vpj_34 -= vdf_34 * vdq_34;
+      vpj_56 -= vdf_56 * vdq_56;
+      vpj_78 -= vdf_78 * vdq_78;
+      vpi += vdf_12 * vdq_12;
+      vpi += vdf_34 * vdq_34;
+      vpi += vdf_56 * vdq_56;
+      vpi += vdf_78 * vdq_78;
+      v8df vpj_11 = _mm512_permutexvar_pd(idx_0123, vpj_12);
+      v8df vpj_33 = _mm512_permutexvar_pd(idx_0123, vpj_34);
+      v8df vpj_55 = _mm512_permutexvar_pd(idx_0123, vpj_56);
+      v8df vpj_77 = _mm512_permutexvar_pd(idx_0123, vpj_78);
+      _mm512_mask_store_pd((double*)(z+j_1), khigh, vpj_11);
+      _mm512_mask_store_pd((double*)(z+j_3), khigh, vpj_33);
+      _mm512_mask_store_pd((double*)(z+j_5), khigh, vpj_55);
+      _mm512_mask_store_pd((double*)(z+j_7), khigh, vpj_77);
+      _mm512_mask_store_pd((double*)(z+j_2), khigh, vpj_12);
+      _mm512_mask_store_pd((double*)(z+j_4), khigh, vpj_34);
+      _mm512_mask_store_pd((double*)(z+j_6), khigh, vpj_56);
+      _mm512_mask_store_pd((double*)(z+j_8), khigh, vpj_78);
+    }
+    v4df vpi_low = _mm512_extractf64x4_pd(vpi, 0);
+    v4df vpi_high = _mm512_extractf64x4_pd(vpi, 1);
+    v4df vdpi = vpi_low + vpi_high;
+    v8df vzdpi = _mm512_insertf64x4(vzero, vdpi, 1);
+    vzi += vzdpi;
+    _mm512_store_pd((double*)(z+i), vzi);
+    const double qix = z[i][X];
+    const double qiy = z[i][Y];
+    const double qiz = z[i][Z];
+    double pfx = 0;
+    double pfy = 0;
+    double pfz = 0;
+    for (int k = (np/8*8); k < np; k++) {
+      const int j = sorted_list[kp + k];
+      double dx = z[j][X] - qix;
+      double dy = z[j][Y] - qiy;
+      double dz = z[j][Z] - qiz;
+      double r2 = (dx * dx + dy * dy + dz * dz);
+      double r6 = r2 * r2 * r2;
+      double df = ((24.0 * r6 - 48.0) / (r6 * r6 * r2)) * dt;
+      if (r2 > CL2) df=0.0;
+      pfx += df * dx;
+      pfy += df * dy;
+      pfz += df * dz;
+      z[j][PX] -= df * dx;
+      z[j][PY] -= df * dy;
+      z[j][PZ] -= df * dz;
+    }
+    z[i][PX] += pfx;
+    z[i][PY] += pfy;
+    z[i][PZ] += pfz;
+  }
+}
+//----------------------------------------------------------------------
+void
 measure(void(*pfunc)(), const char *name) {
   const auto beg = std::chrono::system_clock::now();
   const int LOOP = 100;
@@ -1326,6 +1671,16 @@ main(void) {
 #elif INTRIN_v5
   measure(&force_intrin_v5, "without scatter & gather, swp");
   print_result();
+#elif AOS_8
+  copy_to_z();
+  measure(&force_sorted_z_intrin, "aos 8 bytes, intrin");
+  copy_from_z();
+  print_result();
+#elif AOS_8_SWP
+  copy_to_z();
+  measure(&force_sorted_z_intrin_swp, "aos 8 bytes, intrin, swp");
+  copy_from_z();
+  print_result();
 #else
   measure(&force_pair, "pair");
   measure(&force_sorted, "sorted");
@@ -1335,6 +1690,12 @@ main(void) {
   measure(&force_intrin_v3, "with scatter & gather, remaining loop opt, swp");
   measure(&force_intrin_v4, "without scatter & gather");
   measure(&force_intrin_v5, "without scatter & gather, swp");
+  copy_to_z();
+  measure(&force_sorted_z_intrin, "aos 8 bytes, intrin");
+  copy_from_z();
+  copy_to_z();
+  measure(&force_sorted_z_intrin_swp, "aos 8 bytes, intrin, swp");
+  copy_from_z();
 #endif
   deallocate();
 }

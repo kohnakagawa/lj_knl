@@ -14,6 +14,8 @@ N=119164, without scatter & gather, swp                   11508 [ms]
 N=119164, with gather, reactless                          12154 [ms]
 N=119164, without gather, reactless                       18046 [ms]
 N=119164, with gather, reactless, remaining loop opt      11634 [ms]
+N=119164, aos 8 bytes, intrin                             11318 [ms]
+N=119164, aos 8 bytes, intrin, swp                        10073 [ms]
 
 ## density = 0.5
 N=62500, pair                                              9946 [ms]
