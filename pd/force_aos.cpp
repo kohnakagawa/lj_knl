@@ -1025,6 +1025,143 @@ force_intrin_v5(void) {
   } // end of i loop
 }
 //----------------------------------------------------------------------
+// intrin gather and scatter, swp, 8 bytes, remaining loop opt
+void
+force_intrin_v6(void) {
+  const auto vc24  = _mm512_set1_pd(24.0 * dt);
+  const auto vc48  = _mm512_set1_pd(48.0 * dt);
+  const auto vcl2  = _mm512_set1_pd(CL2);
+  const auto vzero = _mm512_setzero_pd();
+  const auto pn = particle_number;
+  const auto vpitch = _mm512_set1_epi64(8);
+
+  for (int i = 0; i < pn; i++) {
+    const auto vqxi = _mm512_set1_pd(z[i][X]);
+    const auto vqyi = _mm512_set1_pd(z[i][Y]);
+    const auto vqzi = _mm512_set1_pd(z[i][Z]);
+
+    auto vpxi = _mm512_setzero_pd();
+    auto vpyi = _mm512_setzero_pd();
+    auto vpzi = _mm512_setzero_pd();
+
+    const auto np = number_of_partners[i];
+    const auto kp = pointer[i];
+    const auto vnp = _mm512_set1_epi64(np);
+    auto vk_idx = _mm512_set_epi64(7LL, 6LL, 5LL, 4LL,
+                                   3LL, 2LL, 1LL, 0LL);
+    const auto num_loop = ((np - 1) / 8 + 1) * 8;
+
+    // initial force calculation
+    // load position
+    auto vindex_a = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp])),
+                                      3);
+    auto mask_a = _mm512_cmp_epi64_mask(vk_idx,
+                                        vnp,
+                                        _MM_CMPINT_LT);
+    auto vqxj = _mm512_i32gather_pd(vindex_a, &z[0][X], 8);
+    auto vqyj = _mm512_i32gather_pd(vindex_a, &z[0][Y], 8);
+    auto vqzj = _mm512_i32gather_pd(vindex_a, &z[0][Z], 8);
+
+    // calc distance
+    auto vdx_a = _mm512_sub_pd(vqxj, vqxi);
+    auto vdy_a = _mm512_sub_pd(vqyj, vqyi);
+    auto vdz_a = _mm512_sub_pd(vqzj, vqzi);
+    auto vr2 = _mm512_fmadd_pd(vdz_a,
+                               vdz_a,
+                               _mm512_fmadd_pd(vdy_a,
+                                               vdy_a,
+                                               _mm512_mul_pd(vdx_a, vdx_a)));
+
+    // calc force norm
+    auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+
+    auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                             _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+    vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                               vzero, vdf);
+    vdf = _mm512_mask_blend_pd(mask_a, vzero, vdf);
+
+    for (int k = 8; k < num_loop; k += 8) {
+      // load position
+      auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
+                                        3);
+      vk_idx = _mm512_add_epi64(vk_idx, vpitch);
+      auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
+                                          vnp,
+                                          _MM_CMPINT_LT);
+      vqxj = _mm512_i32gather_pd(vindex_b, &z[0][X], 8);
+      vqyj = _mm512_i32gather_pd(vindex_b, &z[0][Y], 8);
+      vqzj = _mm512_i32gather_pd(vindex_b, &z[0][Z], 8);
+
+      // calc distance
+      auto vdx_b = _mm512_sub_pd(vqxj, vqxi);
+      auto vdy_b = _mm512_sub_pd(vqyj, vqyi);
+      auto vdz_b = _mm512_sub_pd(vqzj, vqzi);
+      vr2 = _mm512_fmadd_pd(vdz_b,
+                            vdz_b,
+                            _mm512_fmadd_pd(vdy_b,
+                                            vdy_b,
+                                            _mm512_mul_pd(vdx_b,
+                                                          vdx_b)));
+
+      // write back j particle momentum
+      vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
+
+      auto vpxj = _mm512_i32gather_pd(vindex_a, &z[0][PX], 8);
+      auto vpyj = _mm512_i32gather_pd(vindex_a, &z[0][PY], 8);
+      auto vpzj = _mm512_i32gather_pd(vindex_a, &z[0][PZ], 8);
+
+      vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
+      vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
+      vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
+
+      _mm512_mask_i32scatter_pd(&z[0][PX], mask_a, vindex_a, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&z[0][PY], mask_a, vindex_a, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&z[0][PZ], mask_a, vindex_a, vpzj, 8);
+
+      // calc force norm
+      vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
+                          _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+                                 vzero, vdf);
+      vdf = _mm512_mask_blend_pd(mask_b, vzero, vdf);
+
+      // send to next
+      vindex_a = vindex_b;
+      mask_a   = mask_b;
+      vdx_a    = vdx_b;
+      vdy_a    = vdy_b;
+      vdz_a    = vdz_b;
+    } // end of k loop
+
+    // final write back momentum
+    // write back j particle momentum
+    vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
+    vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
+    vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
+
+    auto vpxj = _mm512_i32gather_pd(vindex_a, &z[0][PX], 8);
+    auto vpyj = _mm512_i32gather_pd(vindex_a, &z[0][PY], 8);
+    auto vpzj = _mm512_i32gather_pd(vindex_a, &z[0][PZ], 8);
+
+    vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
+    vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
+    vpzj = _mm512_fnmadd_pd(vdf, vdz_a, vpzj);
+
+    _mm512_mask_i32scatter_pd(&z[0][PX], mask_a, vindex_a, vpxj, 8);
+    _mm512_mask_i32scatter_pd(&z[0][PY], mask_a, vindex_a, vpyj, 8);
+    _mm512_mask_i32scatter_pd(&z[0][PZ], mask_a, vindex_a, vpzj, 8);
+
+    // write back i particle momentum
+    z[i][PX] += _mm512_reduce_add_pd(vpxi);
+    z[i][PY] += _mm512_reduce_add_pd(vpyi);
+    z[i][PZ] += _mm512_reduce_add_pd(vpzi);
+  } // end of i loop
+}
+//----------------------------------------------------------------------
 void
 force_intrin_v1_reactless(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -1671,6 +1808,11 @@ main(void) {
 #elif INTRIN_v5
   measure(&force_intrin_v5, "without scatter & gather, swp");
   print_result();
+#elif INTRIN_v6
+  copy_to_z();
+  measure(&force_intrin_v6, "aos 8 bytes, gather and scatter, swp");
+  copy_from_z();
+  print_result();
 #elif AOS_8
   copy_to_z();
   measure(&force_sorted_z_intrin, "aos 8 bytes, intrin");
@@ -1695,6 +1837,9 @@ main(void) {
   copy_from_z();
   copy_to_z();
   measure(&force_sorted_z_intrin_swp, "aos 8 bytes, intrin, swp");
+  copy_from_z();
+  copy_to_z();
+  measure(&force_intrin_v6, "aos 8 bytes, gather and scatter, swp");
   copy_from_z();
 #endif
   deallocate();
