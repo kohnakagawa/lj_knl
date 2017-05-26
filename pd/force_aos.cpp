@@ -1058,9 +1058,9 @@ force_intrin_v6(void) {
     auto mask_a = _mm512_cmp_epi64_mask(vk_idx,
                                         vnp,
                                         _MM_CMPINT_LT);
-    auto vqxj = _mm512_i32gather_pd(vindex_a, &z[0][X], 8);
-    auto vqyj = _mm512_i32gather_pd(vindex_a, &z[0][Y], 8);
-    auto vqzj = _mm512_i32gather_pd(vindex_a, &z[0][Z], 8);
+    auto vqxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][X], 8);
+    auto vqyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][Y], 8);
+    auto vqzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][Z], 8);
 
     // calc distance
     auto vdx_a = _mm512_sub_pd(vqxj, vqxi);
@@ -1089,9 +1089,9 @@ force_intrin_v6(void) {
       auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
                                           vnp,
                                           _MM_CMPINT_LT);
-      vqxj = _mm512_i32gather_pd(vindex_b, &z[0][X], 8);
-      vqyj = _mm512_i32gather_pd(vindex_b, &z[0][Y], 8);
-      vqzj = _mm512_i32gather_pd(vindex_b, &z[0][Z], 8);
+      vqxj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &z[0][X], 8);
+      vqyj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &z[0][Y], 8);
+      vqzj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &z[0][Z], 8);
 
       // calc distance
       auto vdx_b = _mm512_sub_pd(vqxj, vqxi);
@@ -1109,9 +1109,9 @@ force_intrin_v6(void) {
       vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
       vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
 
-      auto vpxj = _mm512_i32gather_pd(vindex_a, &z[0][PX], 8);
-      auto vpyj = _mm512_i32gather_pd(vindex_a, &z[0][PY], 8);
-      auto vpzj = _mm512_i32gather_pd(vindex_a, &z[0][PZ], 8);
+      auto vpxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PX], 8);
+      auto vpyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PY], 8);
+      auto vpzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PZ], 8);
 
       vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
       vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
@@ -1143,9 +1143,9 @@ force_intrin_v6(void) {
     vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
     vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
 
-    auto vpxj = _mm512_i32gather_pd(vindex_a, &z[0][PX], 8);
-    auto vpyj = _mm512_i32gather_pd(vindex_a, &z[0][PY], 8);
-    auto vpzj = _mm512_i32gather_pd(vindex_a, &z[0][PZ], 8);
+    auto vpxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PX], 8);
+    auto vpyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PY], 8);
+    auto vpzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][PZ], 8);
 
     vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
     vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
@@ -1162,7 +1162,7 @@ force_intrin_v6(void) {
   } // end of i loop
 }
 //----------------------------------------------------------------------
-// intrin gather and scatter, swp, remaining loop opt, prefetch
+// intrin (with scatter & gather) + swp + remove remaining loop PF
 void
 force_intrin_v7(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
@@ -1195,9 +1195,9 @@ force_intrin_v7(void) {
     auto mask_a = _mm512_cmp_epi64_mask(vk_idx,
                                         vnp,
                                         _MM_CMPINT_LT);
-    auto vqxj = _mm512_i32gather_pd(vindex_a, &q[0].x, 8);
-    auto vqyj = _mm512_i32gather_pd(vindex_a, &q[0].y, 8);
-    auto vqzj = _mm512_i32gather_pd(vindex_a, &q[0].z, 8);
+    auto vqxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &q[0].x, 8);
+    auto vqyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &q[0].y, 8);
+    auto vqzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &q[0].z, 8);
 
     // calc distance
     auto vdx_a = _mm512_sub_pd(vqxj, vqxi);
@@ -1226,9 +1226,9 @@ force_intrin_v7(void) {
       auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
                                           vnp,
                                           _MM_CMPINT_LT);
-      vqxj = _mm512_i32gather_pd(vindex_b, &q[0].x, 8);
-      vqyj = _mm512_i32gather_pd(vindex_b, &q[0].y, 8);
-      vqzj = _mm512_i32gather_pd(vindex_b, &q[0].z, 8);
+      vqxj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &q[0].x, 8);
+      vqyj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &q[0].y, 8);
+      vqzj = _mm512_mask_i32gather_pd(vzero, mask_b, vindex_b, &q[0].z, 8);
 
       // calc distance
       auto vdx_b = _mm512_sub_pd(vqxj, vqxi);
@@ -1241,17 +1241,14 @@ force_intrin_v7(void) {
                                             _mm512_mul_pd(vdx_b,
                                                           vdx_b)));
 
-      // prefetch next data
-      _mm512_mask_prefetch_i32scatter_pd(&p[0].x, mask_b, vindex_b, 8, _MM_HINT_T0);
-
       // write back j particle momentum
       vpxi = _mm512_fmadd_pd(vdf, vdx_a, vpxi);
       vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
       vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
 
-      auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
-      auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
-      auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
+      auto vpxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].x, 8);
+      auto vpyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].y, 8);
+      auto vpzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].z, 8);
 
       vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
       vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
@@ -1261,10 +1258,16 @@ force_intrin_v7(void) {
       _mm512_mask_i32scatter_pd(&p[0].y, mask_a, vindex_a, vpyj, 8);
       _mm512_mask_i32scatter_pd(&p[0].z, mask_a, vindex_a, vpzj, 8);
 
+
       // calc force norm
       vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
       vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
                           _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+
+      // prefetch next line
+      _mm512_mask_prefetch_i32gather_pd(vindex_b, mask_b, &p[0].x, 8, _MM_HINT_T0);
+
+      // cutoff
       vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
                                  vzero, vdf);
       vdf = _mm512_mask_blend_pd(mask_b, vzero, vdf);
@@ -1283,9 +1286,9 @@ force_intrin_v7(void) {
     vpyi = _mm512_fmadd_pd(vdf, vdy_a, vpyi);
     vpzi = _mm512_fmadd_pd(vdf, vdz_a, vpzi);
 
-    auto vpxj = _mm512_i32gather_pd(vindex_a, &p[0].x, 8);
-    auto vpyj = _mm512_i32gather_pd(vindex_a, &p[0].y, 8);
-    auto vpzj = _mm512_i32gather_pd(vindex_a, &p[0].z, 8);
+    auto vpxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].x, 8);
+    auto vpyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].y, 8);
+    auto vpzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &p[0].z, 8);
 
     vpxj = _mm512_fnmadd_pd(vdf, vdx_a, vpxj);
     vpyj = _mm512_fnmadd_pd(vdf, vdy_a, vpyj);
