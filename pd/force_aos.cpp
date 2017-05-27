@@ -2292,7 +2292,7 @@ main(void) {
   print_result();
 #elif INTRIN_v9
   copy_to_z();
-  measure(&force_intrin_v9, "aos 8 bytes, scatter & gather, swp, PF");
+  measure(&force_intrin_v9, "aos 8 bytes, gather and scatter, swp, PF");
   copy_from_z();
   print_result();
 #elif AOS_8
