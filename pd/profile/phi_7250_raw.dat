@@ -3,36 +3,36 @@
 
 # AoS
 ## density = 1
-N=119164, pair                                            39162 [ms]
-N=119164, sorted                                          31736 [ms]
-N=119164, next                                            28881 [ms]
-N=119164, with scatter & gather                           13047 [ms]
-N=119164, with scatter & gather, remaining loop opt       11093 [ms]
-N=119164, with scatter & gather, remaining loop opt, swp  10067 [ms] (x3.2 sorted)
-N=119164, without scatter & gather                        11507 [ms]
-N=119164, without scatter & gather, swp                   11508 [ms]
-N=119164, with gather, reactless                          12154 [ms]
-N=119164, without gather, reactless                       18046 [ms]
-N=119164, with gather, reactless, remaining loop opt      11634 [ms]
-N=119164, aos 8 bytes, intrin                             11318 [ms]
-N=119164, aos 8 bytes, intrin, swp                        10073 [ms]
-N=119164, aos 8 bytes, gather and scatter, swp             7030 [ms] (x4.5 sorted)
-N=119164, scatter & gather, remaining loop opt, swp, PF    8442 [ms] (x3.8 sorted)
+N=119164, pair                                            39454 [ms]
+N=119164, sorted                                          33350 [ms]
+N=119164, next                                            29122 [ms]
+N=119164, with scatter & gather                           13026 [ms]
+N=119164, with scatter & gather, remaining loop opt       11085 [ms]
+N=119164, with scatter & gather, remaining loop opt, swp  10056 [ms]
+N=119164, without scatter & gather                        11498 [ms]
+N=119164, without scatter & gather, swp                   11485 [ms]
+N=119164, aos 8 bytes, intrin                             11266 [ms]
+N=119164, aos 8 bytes, intrin, swp                        10070 [ms]
+N=119164, aos 8 bytes, gather and scatter, swp             7022 [ms]
+N=119164, scatter & gather, remaining loop opt, swp, PF    8435 [ms]
+N=119164, scatter & gather, remaining loop opt, swp, PF2   7928 [ms]
+N=119164, aos 8 bytes, gather and scatter, swp, PF         7203 [ms]
 
 ## density = 0.5
-N=62500, pair                                              9946 [ms]
-N=62500, sorted                                            8557 [ms]
-N=62500, next                                              7788 [ms]
-N=62500, with scatter & gather                             3621 [ms]
-N=62500, with scatter & gather, remaining loop opt         3505 [ms]
-N=62500, with scatter & gather, remaining loop opt, swp    2951 [ms] (x2.9 sorted)
+N=62500, pair                                             10021 [ms]
+N=62500, sorted                                            8788 [ms]
+N=62500, next                                              7783 [ms]
+N=62500, with scatter & gather                             3576 [ms]
+N=62500, with scatter & gather, remaining loop opt         3513 [ms]
+N=62500, with scatter & gather, remaining loop opt, swp    2950 [ms]
 N=62500, without scatter & gather                          3101 [ms]
-N=62500, without scatter & gather, swp                     3305 [ms]
-N=62500, with gather, reactless                            3720 [ms]
-N=62500, without gather, reactless                         5314 [ms]
-N=62500, with gather, reactless, remaining loop opt        3452 [ms]
-N=62500, aos 8 bytes, gather and scatter, swp              2506 [ms] (x3.4 sorted)
-N=62500, scatter & gather, remaining loop opt, swp, PF     2520 [ms] (x3.4 sorted)
+N=62500, without scatter & gather, swp                     3304 [ms]
+N=62500, aos 8 bytes, intrin                               4143 [ms]
+N=62500, aos 8 bytes, intrin, swp                          3787 [ms]
+N=62500, aos 8 bytes, gather and scatter, swp              2449 [ms]
+N=62500, scatter & gather, remaining loop opt, swp, PF     2508 [ms]
+N=62500, scatter & gather, remaining loop opt, swp, PF2    2490 [ms]
+N=62500, aos 8 bytes, gather and scatter, swp, PF          2505 [ms]
 
 # SoA
 ## density = 1
