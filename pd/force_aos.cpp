@@ -1074,11 +1074,11 @@ force_intrin_v6(void) {
 
     // calc force norm
     auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
-
     auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
                              _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
-    vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                               vzero, vdf);
+
+    auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+    mask_a = _mm512_kand(mask_a, le_cl2);
     vdf = _mm512_mask_blend_pd(mask_a, vzero, vdf);
 
     for (int k = 8; k < num_loop; k += 8) {
@@ -1125,8 +1125,9 @@ force_intrin_v6(void) {
       vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
       vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
                           _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
-      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                 vzero, vdf);
+
+      le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      mask_b = _mm512_kand(mask_b, le_cl2);
       vdf = _mm512_mask_blend_pd(mask_b, vzero, vdf);
 
       // send to next
@@ -1302,6 +1303,7 @@ force_intrin_v7(void) {
     p[i].x += _mm512_reduce_add_pd(vpxi);
     p[i].y += _mm512_reduce_add_pd(vpyi);
     p[i].z += _mm512_reduce_add_pd(vpzi);
+
   } // end of i loop
 }
 //----------------------------------------------------------------------
