@@ -1031,6 +1031,7 @@ force_intrin_v6(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
   const auto vc48  = _mm512_set1_pd(48.0 * dt);
   const auto vcl2  = _mm512_set1_pd(CL2);
+  const auto v2    = _mm512_set1_pd(2.0);
   const auto vzero = _mm512_setzero_pd();
   const auto pn = particle_number;
   const auto vpitch = _mm512_set1_epi64(8);
@@ -1074,8 +1075,12 @@ force_intrin_v6(void) {
 
     // calc force norm
     auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
-    auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
-                             _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+    auto vdf_nume      = _mm512_fmsub_pd(vc24, vr6, vc48);
+    auto vdf_deno      = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);
+    auto vdf_deno_inv  = _mm512_rcp28_pd(vdf_deno);
+    auto vdf_deno_inv2 = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);
+    vdf_deno_inv2      = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);
+    auto vdf           = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);
 
     auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
     mask_a = _mm512_kand(mask_a, le_cl2);
@@ -1123,8 +1128,12 @@ force_intrin_v6(void) {
 
       // calc force norm
       vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
-      vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
-                          _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
+      vdf_nume      = _mm512_fmsub_pd(vc24, vr6, vc48);
+      vdf_deno      = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);
+      vdf_deno_inv  = _mm512_rcp28_pd(vdf_deno);
+      vdf_deno_inv2 = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);
+      vdf_deno_inv2 = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);
+      vdf           = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);
 
       le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
       mask_b = _mm512_kand(mask_b, le_cl2);
@@ -2283,7 +2292,7 @@ main(void) {
   print_result();
 #elif INTRIN_v6
   copy_to_z();
-  measure(&force_intrin_v6, "aos 8 bytes, gather and scatter, swp");
+  measure(&force_intrin_v6, "aos 8 bytes, gather and scatter, swp, rcp approx");
   copy_from_z();
   print_result();
 #elif INTRIN_v7
