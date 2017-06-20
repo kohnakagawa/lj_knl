@@ -1047,18 +1047,16 @@ force_intrin_v6(void) {
 
     const auto np = number_of_partners[i];
     const auto kp = pointer[i];
+    const int* ptr_list = &sorted_list[kp];
+
     const auto vnp = _mm512_set1_epi64(np);
     auto vk_idx = _mm512_set_epi64(7LL, 6LL, 5LL, 4LL,
                                    3LL, 2LL, 1LL, 0LL);
-    const auto num_loop = ((np - 1) / 8 + 1) * 8;
 
     // initial force calculation
     // load position
-    auto vindex_a = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp])),
-                                      3);
-    auto mask_a = _mm512_cmp_epi64_mask(vk_idx,
-                                        vnp,
-                                        _MM_CMPINT_LT);
+    auto vindex_a = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)ptr_list), 3);
+    auto mask_a = _mm512_cmp_epi64_mask(vk_idx, vnp, _MM_CMPINT_LT);
     auto vqxj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][X], 8);
     auto vqyj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][Y], 8);
     auto vqzj = _mm512_mask_i32gather_pd(vzero, mask_a, vindex_a, &z[0][Z], 8);
@@ -1086,10 +1084,10 @@ force_intrin_v6(void) {
     mask_a = _mm512_kand(mask_a, le_cl2);
     vdf = _mm512_mask_blend_pd(mask_a, vzero, vdf);
 
-    for (int k = 8; k < num_loop; k += 8) {
+    for (int k = 8; k < np; k += 8) {
       // load position
-      auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
-                                        3);
+      ptr_list += 8;
+      auto vindex_b = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)ptr_list), 3);
       vk_idx = _mm512_add_epi64(vk_idx, vpitch);
       auto mask_b = _mm512_cmp_epi64_mask(vk_idx,
                                           vnp,
