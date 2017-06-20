@@ -23,3 +23,20 @@ N=62500, with scatter & gather, remaining loop opt, swp     1852 [ms]
 N=62500, with scatter & gather, remaining loop opt, swp, 8  1871 [ms]
 N=62500, with gather, reactless                             3672 [ms]
 N=62500, with gather, reactless, remaining loop opt         1613 [ms]
+
+# SoA
+## density = 1
+N=119164, pair                                             44033 [ms]
+N=119164, sorted                                            7883 [ms]
+N=119164, sorted_2d                                         7141 [ms]
+N=119164, next                                             27772 [ms]
+N=119164, with scatter & gather                            12459 [ms]
+N=119164, with scatter & gather, remaining loop opt         7426 [ms]
+
+## density = 0.5
+N=62500, pair                                              11215 [ms]
+N=62500, sorted                                             2341 [ms]
+N=62500, sorted_2d                                          2290 [ms]
+N=62500, next                                               7420 [ms]
+N=62500, with scatter & gather                              3467 [ms]
+N=62500, with scatter & gather, remaining loop opt          2172 [ms]
