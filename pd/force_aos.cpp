@@ -1805,6 +1805,7 @@ force_intrin_v3_reactless(void) {
   const auto vc24  = _mm512_set1_pd(24.0 * dt);
   const auto vc48  = _mm512_set1_pd(48.0 * dt);
   const auto vcl2  = _mm512_set1_pd(CL2);
+  const auto v2    = _mm512_set1_pd(2.0);
   const auto vzero = _mm512_setzero_pd();
   const auto pn = particle_number;
   const auto vpitch = _mm512_set1_epi64(8);
@@ -1820,22 +1821,23 @@ force_intrin_v3_reactless(void) {
 
     const auto np = number_of_partners[i];
     const auto kp = pointer[i];
+    const int* ptr_list = &sorted_list[kp];
+
     const auto vnp = _mm512_set1_epi64(np);
-    auto vk_idx = _mm512_set_epi64(7, 6, 5, 4,
-                                   3, 2, 1, 0);
-    const auto num_loop = ((np - 1) / 8 + 1) * 8;
+    auto vk_idx = _mm512_set_epi64(7LL, 6LL, 5LL, 4LL,
+                                   3LL, 2LL, 1LL, 0LL);
 
-    for (int k = 0; k < num_loop; k += 8) {
-      const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k])),
-                                            2);
+    for (int k = 0; k < np; k += 8) {
+      const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)ptr_list), 2);
+      ptr_list += 8;
 
-      const auto mask = _mm512_cmp_epi64_mask(vk_idx,
-                                              vnp,
-                                              _MM_CMPINT_LT);
+      const auto lt_np = _mm512_cmp_epi64_mask(vk_idx,
+                                               vnp,
+                                               _MM_CMPINT_LT);
 
-      const auto vqxj = _mm512_i32gather_pd(vindex, &q[0].x, 8);
-      const auto vqyj = _mm512_i32gather_pd(vindex, &q[0].y, 8);
-      const auto vqzj = _mm512_i32gather_pd(vindex, &q[0].z, 8);
+      const auto vqxj = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &q[0].x, 8);
+      const auto vqyj = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &q[0].y, 8);
+      const auto vqzj = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &q[0].z, 8);
 
       const auto vdx = _mm512_sub_pd(vqxj, vqxi);
       const auto vdy = _mm512_sub_pd(vqyj, vqyi);
@@ -1847,13 +1849,15 @@ force_intrin_v3_reactless(void) {
                                                        vdy,
                                                        _mm512_mul_pd(vdx, vdx)));
       const auto vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      const auto vdf_nume      = _mm512_fmsub_pd(vc24, vr6, vc48);
+      const auto vdf_deno      = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);
+      const auto vdf_deno_inv  = _mm512_rcp28_pd(vdf_deno);
+      auto vdf_deno_inv2 = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);
+      vdf_deno_inv2      = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);
+      auto vdf           = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);
 
-      auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
-                               _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
-
-      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                 vzero, vdf);
-
+      const auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      const auto mask = _mm512_kand(lt_np, le_cl2);
       vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
 
       vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);

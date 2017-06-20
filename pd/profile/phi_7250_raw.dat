@@ -18,6 +18,7 @@ N=119164, aos 8 bytes, gather and scatter, swp, rcp approx 6584 [ms]
 N=119164, scatter & gather, remaining loop opt, swp, PF    8435 [ms]
 N=119164, scatter & gather, remaining loop opt, swp, PF2   7928 [ms]
 N=119164, aos 8 bytes, gather and scatter, swp, PF         7203 [ms]
+N=119164, with gather, reactless, remaining loop opt       8108 [ms]
 
 ## density = 0.5
 N=62500, pair                                             10021 [ms]
@@ -35,6 +36,7 @@ N=62500, aos 8 bytes, gather and scatter, swp, rcp approx  2328 [ms]
 N=62500, scatter & gather, remaining loop opt, swp, PF     2508 [ms]
 N=62500, scatter & gather, remaining loop opt, swp, PF2    2490 [ms]
 N=62500, aos 8 bytes, gather and scatter, swp, PF          2505 [ms]
+N=62500, with gather, reactless, remaining loop opt        2473 [ms]
 
 # SoA
 ## density = 1
