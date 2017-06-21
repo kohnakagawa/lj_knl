@@ -1,0 +1,72 @@
+|    # | src                                                       | # of insts | type |
+| 2065 | const int j_1 = sorted_list[kp + k];                      |         21 |      |
+| 2066 | const int j_2 = sorted_list[kp + k + 1];                  |          1 |      |
+| 2067 | const int j_3 = sorted_list[kp + k + 2];                  |          1 |      |
+| 2068 | const int j_4 = sorted_list[kp + k + 3];                  |          1 |      |
+| 2069 | const int j_5 = sorted_list[kp + k + 4];                  |          1 |      |
+| 2070 | const int j_6 = sorted_list[kp + k + 5];                  |          1 |      |
+| 2071 | const int j_7 = sorted_list[kp + k + 6];                  |          1 |      |
+| 2072 | const int j_8 = sorted_list[kp + k + 7];                  |          1 |      |
+| 2073 | v8df vzj_1 = _mm512_loadu_pd((double*)(z+j_1));           |          2 | /    |
+| 2074 | v8df vzj_2 = _mm512_loadu_pd((double*)(z+j_2));           |          2 | /    |
+| 2075 | v8df vqj_12= _mm512_permutex2var_pd(vzj_1, idx_q, vzj_2); |          2 | *    |
+| 2076 | v8df vpj_12= _mm512_permutex2var_pd(vzj_1, idx_p, vzj_2); |          1 | *    |
+| 2077 | v8df vdq_12 = vqj_12 - vqi;                               |          1 |      |
+| 2078 |                                                           |          0 |      |
+| 2079 | v8df vzj_3 = _mm512_loadu_pd((double*)(z+j_3));           |          2 | /    |
+| 2080 | v8df vzj_4 = _mm512_loadu_pd((double*)(z+j_4));           |          2 | /    |
+| 2081 | v8df vqj_34= _mm512_permutex2var_pd(vzj_3, idx_q, vzj_4); |          2 | *    |
+| 2082 | v8df vpj_34= _mm512_permutex2var_pd(vzj_3, idx_p, vzj_4); |          1 | *    |
+| 2083 | v8df vdq_34 = vqj_34 - vqi;                               |          1 |      |
+| 2084 |                                                           |          0 |      |
+| 2085 | v8df vzj_5 = _mm512_loadu_pd((double*)(z+j_5));           |          2 | /    |
+| 2086 | v8df vzj_6 = _mm512_loadu_pd((double*)(z+j_6));           |          2 | /    |
+| 2087 | v8df vqj_56= _mm512_permutex2var_pd(vzj_5, idx_q, vzj_6); |          2 | *    |
+| 2088 | v8df vpj_56= _mm512_permutex2var_pd(vzj_5, idx_p, vzj_6); |          1 | *    |
+| 2089 | v8df vdq_56 = vqj_56 - vqi;                               |          1 |      |
+| 2090 |                                                           |          0 |      |
+| 2091 | v8df vzj_7 = _mm512_loadu_pd((double*)(z+j_7));           |          2 | /    |
+| 2092 | v8df vzj_8 = _mm512_loadu_pd((double*)(z+j_8));           |          2 | /    |
+| 2093 | v8df vqj_78= _mm512_permutex2var_pd(vzj_7, idx_q, vzj_8); |          2 | *    |
+| 2094 | v8df vpj_78= _mm512_permutex2var_pd(vzj_7, idx_p, vzj_8); |          1 | *    |
+| 2095 | v8df vdq_78 = vqj_78 - vqi;                               |          1 |      |
+| 2096 |                                                           |          0 |      |
+| 2097 | v8df tmp0 = _mm512_unpacklo_pd(vdq_12, vdq_34);           |          1 | *    |
+| 2098 | v8df tmp1 = _mm512_unpackhi_pd(vdq_12, vdq_34);           |          1 | *    |
+| 2099 | v8df tmp2 = _mm512_unpacklo_pd(vdq_56, vdq_78);           |          1 | *    |
+| 2100 | v8df tmp3 = _mm512_unpackhi_pd(vdq_56, vdq_78);           |          1 | *    |
+| 2101 |                                                           |          0 |      |
+| 2102 | v8df vdx = _mm512_permutex2var_pd(tmp0, idx2, tmp2);      |          2 | *    |
+| 2103 | v8df vdy = _mm512_permutex2var_pd(tmp1, idx2, tmp3);      |          1 | *    |
+| 2104 | v8df vdz = _mm512_permutex2var_pd(tmp0, idx3, tmp2);      |          1 | *    |
+| 2105 |                                                           |          0 |      |
+| 2106 | v8df vr2 = vdx*vdx + vdy*vdy + vdz*vdz;                   |          3 |      |
+| 2107 | v8df vr6 = vr2 * vr2 * vr2;                               |          2 |      |
+| 2108 | v8df vdf = (vc24 * vr6 - vc48) / (vr6 * vr6 * vr2);       |         13 |      |
+| 2109 |                                                           |          0 |      |
+| 2110 | __mmask8 kcmp = _mm512_cmp_pd_mask(vr2,vcl2, _CMP_GT_OS); |          2 |      |
+| 2111 | vdf = _mm512_mask_blend_pd(kcmp, vdf, vzero);             |          1 |      |
+| 2112 | v8df vdf_12 = _mm512_permutexvar_pd(idx_f12, vdf);        |          1 | *    |
+| 2113 | v8df vdf_34 = _mm512_permutexvar_pd(idx_f34, vdf);        |          1 | *    |
+| 2114 | v8df vdf_56 = _mm512_permutexvar_pd(idx_f56, vdf);        |          1 | *    |
+| 2115 | v8df vdf_78 = _mm512_permutexvar_pd(idx_f78, vdf);        |          1 | *    |
+| 2116 | vpj_12 -= vdf_12 * vdq_12;                                |          1 |      |
+| 2117 | vpj_34 -= vdf_34 * vdq_34;                                |          1 |      |
+| 2118 | vpj_56 -= vdf_56 * vdq_56;                                |          1 |      |
+| 2119 | vpj_78 -= vdf_78 * vdq_78;                                |          1 |      |
+| 2120 | vpi += vdf_12 * vdq_12;                                   |          0 |      |
+| 2121 | vpi += vdf_34 * vdq_34;                                   |          0 |      |
+| 2122 | vpi += vdf_56 * vdq_56;                                   |          0 |      |
+| 2123 | vpi += vdf_78 * vdq_78;                                   |          5 |      |
+| 2124 | v8df vpj_11 = _mm512_permutexvar_pd(idx_0123, vpj_12);    |          1 | *    |
+| 2125 | v8df vpj_33 = _mm512_permutexvar_pd(idx_0123, vpj_34);    |          1 | *    |
+| 2126 | v8df vpj_55 = _mm512_permutexvar_pd(idx_0123, vpj_56);    |          1 | *    |
+| 2127 | v8df vpj_77 = _mm512_permutexvar_pd(idx_0123, vpj_78);    |          1 | *    |
+| 2128 | _mm512_mask_store_pd((double*)(z+j_1), khigh, vpj_11);    |          3 | /    |
+| 2129 | _mm512_mask_store_pd((double*)(z+j_3), khigh, vpj_33);    |          1 | /    |
+| 2130 | _mm512_mask_store_pd((double*)(z+j_5), khigh, vpj_55);    |          1 | /    |
+| 2131 | _mm512_mask_store_pd((double*)(z+j_7), khigh, vpj_77);    |          1 | /    |
+| 2132 | _mm512_mask_store_pd((double*)(z+j_2), khigh, vpj_12);    |          1 | /    |
+| 2133 | _mm512_mask_store_pd((double*)(z+j_4), khigh, vpj_34);    |          1 | /    |
+| 2134 | _mm512_mask_store_pd((double*)(z+j_6), khigh, vpj_56);    |          1 | /    |
+| 2135 | _mm512_mask_store_pd((double*)(z+j_8), khigh, vpj_78);    |          2 | /    |

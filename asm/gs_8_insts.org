@@ -1,0 +1,46 @@
+|    # | src                                                                                     | # of insts | type |
+| 1987 | const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)ptr_list), 3); |          2 |      |
+| 1988 | ptr_list += 8;                                                                          |          1 |      |
+| 1989 | const auto lt_np  = _mm512_cmp_epi64_mask(vk_idx, vnp, _MM_CMPINT_LT);                  |          1 |      |
+| 1990 | const auto vqxj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][X], 8);        |          3 | /    |
+| 1991 | const auto vqyj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][Y], 8);        |          3 | /    |
+| 1992 | const auto vqzj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][Z], 8);        |          3 | /    |
+| 1993 |                                                                                         |          0 |      |
+| 1994 | const auto vdx = _mm512_sub_pd(vqxj, vqxi);                                             |          1 |      |
+| 1995 | const auto vdy = _mm512_sub_pd(vqyj, vqyi);                                             |          1 |      |
+| 1996 | const auto vdz = _mm512_sub_pd(vqzj, vqzi);                                             |          1 |      |
+| 1997 | const auto vr2 = _mm512_fmadd_pd(vdz,                                                   |          3 |      |
+| 1998 | vdz,                                                                                    |          0 |      |
+| 1999 | _mm512_fmadd_pd(vdy,                                                                    |          0 |      |
+| 2000 | vdy,                                                                                    |          0 |      |
+| 2001 | _mm512_mul_pd(vdx, vdx)));                                                              |          0 |      |
+| 2002 |                                                                                         |          0 |      |
+| 2003 | const auto vr6          = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);                  |          2 |      |
+| 2004 | const auto vdf_nume     = _mm512_fmsub_pd(vc24, vr6, vc48);                             |          2 |      |
+| 2005 | const auto vdf_deno     = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);                  |          2 |      |
+| 2006 | const auto vdf_deno_inv = _mm512_rcp28_pd(vdf_deno);                                    |          1 |      |
+| 2007 | auto vdf_deno_inv2      = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);                 |          1 |      |
+| 2008 | vdf_deno_inv2           = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);                   |          1 |      |
+| 2009 | auto vdf                = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);                       |          0 |      |
+| 2010 |                                                                                         |          0 |      |
+| 2011 | const auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);                          |          1 |      |
+| 2012 | const auto mask = _mm512_kand(lt_np, le_cl2);                                           |          0 |      |
+| 2013 | vdf = _mm512_mask_blend_pd(mask, vzero, vdf);                                           |          1 |      |
+| 2014 |                                                                                         |          0 |      |
+| 2015 | vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);                                                 |          1 |      |
+| 2016 | vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);                                                 |          1 |      |
+| 2017 | vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);                                                 |          1 |      |
+| 2018 |                                                                                         |          0 |      |
+| 2019 | auto vpxj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PX], 8);                |          3 | /    |
+| 2020 | auto vpyj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PY], 8);                |          3 | /    |
+| 2021 | auto vpzj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PZ], 8);                |          3 | /    |
+| 2022 |                                                                                         |          0 |      |
+| 2023 | vpxj = _mm512_fnmadd_pd(vdf, vdx, vpxj);                                                |          1 |      |
+| 2024 | vpyj = _mm512_fnmadd_pd(vdf, vdy, vpyj);                                                |          1 |      |
+| 2025 | vpzj = _mm512_fnmadd_pd(vdf, vdz, vpzj);                                                |          1 |      |
+| 2026 |                                                                                         |          0 |      |
+| 2027 | _mm512_mask_i32scatter_pd(&z[0][PX], mask, vindex, vpxj, 8);                            |          2 | /    |
+| 2028 | _mm512_mask_i32scatter_pd(&z[0][PY], mask, vindex, vpyj, 8);                            |          2 | /    |
+| 2029 | _mm512_mask_i32scatter_pd(&z[0][PZ], mask, vindex, vpzj, 8);                            |          1 | /    |
+| 2030 |                                                                                         |          0 |      |
+| 2031 | vk_idx = _mm512_add_epi64(vk_idx, vpitch);                                              |          1 |      |
