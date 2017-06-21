@@ -9,8 +9,8 @@
 #include <x86intrin.h>
 #include <sys/stat.h>
 //----------------------------------------------------------------------
-const double density = 1.0;
-//const double density = 0.5;
+//const double density = 1.0;
+const double density = 0.5;
 const int N = 400000;
 #ifdef REACTLESS
 const int MAX_PAIRS = 60 * N;
@@ -1874,6 +1874,170 @@ force_intrin_v3_reactless(void) {
 }
 //----------------------------------------------------------------------
 void
+force_intrin_v4_reactless(void) {
+  const auto vc24   = _mm512_set1_pd(24.0 * dt);
+  const auto vc48   = _mm512_set1_pd(48.0 * dt);
+  const auto vcl2   = _mm512_set1_pd(CL2);
+  const auto v2     = _mm512_set1_pd(2.0);
+  const auto vzero  = _mm512_setzero_pd();
+  const auto pn     = particle_number;
+  const auto vpitch = _mm512_set1_epi32(8);
+
+  for (int i = 0; i < pn; i++) {
+    const auto vqxi = _mm512_set1_pd(q[i].x);
+    const auto vqyi = _mm512_set1_pd(q[i].y);
+    const auto vqzi = _mm512_set1_pd(q[i].z);
+
+    auto vpxi = _mm512_setzero_pd();
+    auto vpyi = _mm512_setzero_pd();
+    auto vpzi = _mm512_setzero_pd();
+
+    const auto np = number_of_partners[i];
+    const auto kp = pointer[i];
+    const int* ptr_list = &sorted_list[kp];
+
+    const auto vnp = _mm512_set1_epi32(np);
+    auto vk_idx = _mm512_set_epi32(15, 14, 13, 12,
+                                   11, 10, 9,  8,
+                                   7,  6,  5,  4,
+                                   3,  2,  1,  0);
+
+    for (int k = 0; k < np; k += 8) {
+      const auto vindex = _mm512_slli_epi32(_mm512_loadu_si512(ptr_list),
+                                            2);
+      ptr_list += 8;
+
+      const auto lt_np = _mm512_cmp_epi32_mask(vk_idx,
+                                               vnp,
+                                               _MM_CMPINT_LT);
+      const auto vqxj = _mm512_mask_i32gather_pd(vzero, lt_np,
+                                                 _mm512_castsi512_si256(vindex), &q[0].x, 8);
+      const auto vqyj = _mm512_mask_i32gather_pd(vzero, lt_np,
+                                                 _mm512_castsi512_si256(vindex), &q[0].y, 8);
+      const auto vqzj = _mm512_mask_i32gather_pd(vzero, lt_np,
+                                                 _mm512_castsi512_si256(vindex), &q[0].z, 8);
+
+      const auto vdx = _mm512_sub_pd(vqxj, vqxi);
+      const auto vdy = _mm512_sub_pd(vqyj, vqyi);
+      const auto vdz = _mm512_sub_pd(vqzj, vqzi);
+      const auto vr2 = _mm512_fmadd_pd(vdz,
+                                       vdz,
+                                       _mm512_fmadd_pd(vdy,
+                                                       vdy,
+                                                       _mm512_mul_pd(vdx, vdx)));
+
+      // prefetch
+      const __mmask8 lt_np_hi = lt_np >> 8;
+      _mm512_mask_prefetch_i32gather_pd(_mm256_castpd_si256(_mm512_extractf64x4_pd(_mm512_castsi512_pd(vindex), 1)),
+                                        lt_np_hi, &q[0].x, 8, _MM_HINT_T0);
+
+      const auto vr6          = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      const auto vdf_nume     = _mm512_fmsub_pd(vc24, vr6, vc48);
+      const auto vdf_deno     = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);
+      const auto vdf_deno_inv = _mm512_rcp28_pd(vdf_deno);
+      auto vdf_deno_inv2      = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);
+      vdf_deno_inv2           = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);
+      auto vdf                = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);
+
+
+      const auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      const auto mask = _mm512_kand(lt_np, le_cl2);
+      vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
+
+      vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
+
+      vk_idx = _mm512_add_epi32(vk_idx, vpitch);
+    } // end of k loop
+
+    p[i].x += _mm512_reduce_add_pd(vpxi);
+    p[i].y += _mm512_reduce_add_pd(vpyi);
+    p[i].z += _mm512_reduce_add_pd(vpzi);
+  } // end of i loop
+}
+//----------------------------------------------------------------------
+// NOTE: intrin gather and scatter, 8 bytes, remaining loop opt (remove swp opt)
+void
+force_intrin_v6_noswp(void) {
+  const auto vc24   = _mm512_set1_pd(24.0 * dt);
+  const auto vc48   = _mm512_set1_pd(48.0 * dt);
+  const auto vcl2   = _mm512_set1_pd(CL2);
+  const auto v2     = _mm512_set1_pd(2.0);
+  const auto vzero  = _mm512_setzero_pd();
+  const auto pn     = particle_number;
+  const auto vpitch = _mm512_set1_epi64(8);
+
+  for (int i = 0; i < pn; i++) {
+    const auto vqxi = _mm512_set1_pd(z[i][X]);
+    const auto vqyi = _mm512_set1_pd(z[i][Y]);
+    const auto vqzi = _mm512_set1_pd(z[i][Z]);
+
+    auto vpxi = _mm512_setzero_pd();
+    auto vpyi = _mm512_setzero_pd();
+    auto vpzi = _mm512_setzero_pd();
+
+    const auto np = number_of_partners[i];
+    const auto kp = pointer[i];
+    const int* ptr_list = &sorted_list[kp];
+    const auto vnp = _mm512_set1_epi64(np);
+    auto vk_idx = _mm512_set_epi64(7LL, 6LL, 5LL, 4LL,
+                                   3LL, 2LL, 1LL, 0LL);
+    for (int k = 0; k < np; k += 8) {
+      const auto vindex = _mm256_slli_epi32(_mm256_lddqu_si256((const __m256i*)ptr_list), 3);
+      ptr_list += 8;
+      const auto lt_np  = _mm512_cmp_epi64_mask(vk_idx, vnp, _MM_CMPINT_LT);
+      const auto vqxj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][X], 8);
+      const auto vqyj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][Y], 8);
+      const auto vqzj   = _mm512_mask_i32gather_pd(vzero, lt_np, vindex, &z[0][Z], 8);
+
+      const auto vdx = _mm512_sub_pd(vqxj, vqxi);
+      const auto vdy = _mm512_sub_pd(vqyj, vqyi);
+      const auto vdz = _mm512_sub_pd(vqzj, vqzi);
+      const auto vr2 = _mm512_fmadd_pd(vdz,
+                                       vdz,
+                                       _mm512_fmadd_pd(vdy,
+                                                       vdy,
+                                                       _mm512_mul_pd(vdx, vdx)));
+
+      const auto vr6          = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
+      const auto vdf_nume     = _mm512_fmsub_pd(vc24, vr6, vc48);
+      const auto vdf_deno     = _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2);
+      const auto vdf_deno_inv = _mm512_rcp28_pd(vdf_deno);
+      auto vdf_deno_inv2      = _mm512_fnmadd_pd(vdf_deno, vdf_deno_inv, v2);
+      vdf_deno_inv2           = _mm512_mul_pd(vdf_deno_inv2, vdf_deno_inv);
+      auto vdf                = _mm512_mul_pd(vdf_nume, vdf_deno_inv2);
+
+      const auto le_cl2 = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      const auto mask = _mm512_kand(lt_np, le_cl2);
+      vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
+
+      vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
+      vpyi = _mm512_fmadd_pd(vdf, vdy, vpyi);
+      vpzi = _mm512_fmadd_pd(vdf, vdz, vpzi);
+
+      auto vpxj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PX], 8);
+      auto vpyj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PY], 8);
+      auto vpzj = _mm512_mask_i32gather_pd(vzero, mask, vindex, &z[0][PZ], 8);
+
+      vpxj = _mm512_fnmadd_pd(vdf, vdx, vpxj);
+      vpyj = _mm512_fnmadd_pd(vdf, vdy, vpyj);
+      vpzj = _mm512_fnmadd_pd(vdf, vdz, vpzj);
+
+      _mm512_mask_i32scatter_pd(&z[0][PX], mask, vindex, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&z[0][PY], mask, vindex, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&z[0][PZ], mask, vindex, vpzj, 8);
+
+      vk_idx = _mm512_add_epi64(vk_idx, vpitch);
+    } // end of k loop
+
+    z[i][PX] += _mm512_reduce_add_pd(vpxi);
+    z[i][PY] += _mm512_reduce_add_pd(vpyi);
+    z[i][PZ] += _mm512_reduce_add_pd(vpzi);
+  }
+}
+//----------------------------------------------------------------------
+void
 force_sorted_z_intrin(void) {
   const int pn = particle_number;
   const v8df vzero = _mm512_setzero_pd();
@@ -2277,6 +2441,9 @@ main(void) {
 #elif defined INTRIN_v3 && defined REACTLESS
   measure(&force_intrin_v3_reactless, "with gather, reactless, remaining loop opt");
   print_result();
+#elif defined INTRIN_v4 && defined REACTLESS
+  measure(&force_intrin_v4_reactless, "with gather, reactless, remaining loop, PF");
+  print_result();
 #elif INTRIN_v1
   measure(&force_intrin_v1, "with scatter & gather");
   print_result();
@@ -2295,6 +2462,11 @@ main(void) {
 #elif INTRIN_v6
   copy_to_z();
   measure(&force_intrin_v6, "aos 8 bytes, gather and scatter, swp, rcp approx");
+  copy_from_z();
+  print_result();
+#elif INTRIN_v6_NOSWP
+  copy_to_z();
+  measure(&force_intrin_v6_noswp, "aos 8 bytes, gather and scatter, rcp approx");
   copy_from_z();
   print_result();
 #elif INTRIN_v7

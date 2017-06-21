@@ -3,9 +3,13 @@ AOS = aos_pair.out aos_next.out aos_sorted.out \
 	aos_intrin_v4.out aos_intrin_v5.out aos_intrin_v6.out \
 	aos_intrin_v7.out aos_intrin_v8.out aos_intrin_v9.out \
 	aos_intrin_v1_reactless.out aos_intrin_v2_reactless.out \
-	aos_intrin_v3_reactless.out aos_8.out aos_8_swp.out
-SOA = soa_pair.out soa_sorted.out soa_next.out soa_intrin_v1.out soa_intrin_v2.out soa_intrin_v3.out soa_sorted_2d.out
-LOOP_DEP = knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_aos_v3.out knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out
+	aos_intrin_v3_reactless.out aos_intrin_v4_reactless.out \
+	aos_8.out aos_8_swp.out aos_intrin_v6_noswp.out
+
+SOA = soa_pair.out soa_sorted.out soa_next.out soa_intrin_v1.out \
+	soa_intrin_v2.out soa_intrin_v3.out soa_sorted_2d.out
+LOOP_DEP = knl_1x8_aos_v1.out knl_1x8_aos_v2.out knl_1x8_aos_v3.out \
+	knl_1x8_soa_v1.out knl_ref_aos.out knl_ref_soa.out
 BENCH = aos_bench.out soa_bench.out
 
 TARGET= $(AOS) $(SOA) $(LOOP_DEP) $(BENCH)
@@ -21,7 +25,7 @@ loop: $(LOOP_DEP)
 .SUFFIXES:
 .SUFFIXES: .cpp .s
 .cpp.s:
-	icpc -O3 -xMIC-AVX512 -std=c++11 -S $< -o $@
+	icpc -g -O3 -xMIC-AVX512 -std=c++11 -S $< -o $@
 
 aos_pair.out: force_aos.cpp
 	icpc -O3 -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
@@ -49,6 +53,9 @@ aos_intrin_v5.out: force_aos.cpp
 
 aos_intrin_v6.out: force_aos.cpp
 	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v6 $< -o $@
+
+aos_intrin_v6_noswp.out: force_aos.cpp
+	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v6_NOSWP $< -o $@
 
 aos_intrin_v7.out: force_aos.cpp
 	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v7 $< -o $@
@@ -79,6 +86,9 @@ aos_intrin_v2_reactless.out: force_aos.cpp
 
 aos_intrin_v3_reactless.out: force_aos.cpp
 	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v3 -DREACTLESS $< -o $@
+
+aos_intrin_v4_reactless.out: force_aos.cpp
+	icpc -O3 -qopt-prefetch=4 -xMIC-AVX512 -std=c++11 -DINTRIN_v4 -DREACTLESS $< -o $@
 
 soa_pair.out: force_soa.cpp
 	icpc -O3 -xMIC-AVX512 -std=c++11 -DPAIR $< -o $@
