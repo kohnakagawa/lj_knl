@@ -8,6 +8,7 @@
 |----------------------+---------------------+----------------------|
 
 * For 256 bit SIMD precition double
+(https://github.com/kohnakagawa/lj_simdstep/tree/master/asm)
 |                      | w/o gather & scatter |
 |----------------------+----------------------|
 | total                |                   57 |
