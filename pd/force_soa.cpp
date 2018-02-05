@@ -489,7 +489,7 @@ force_intrin_v2(void) {
     for (int k = 0; k < num_loop; k += 8) {
       const auto vindex = _mm256_lddqu_si256((const __m256i*)(&sorted_list[kp + k]));
 
-      const auto mask = _mm512_cmp_epi64_mask(vk_idx,
+      const auto mask_loop = _mm512_cmp_epi64_mask(vk_idx,
                                               vnp,
                                               _MM_CMPINT_LT);
 
@@ -516,9 +516,9 @@ force_intrin_v2(void) {
       auto vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
                                _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
 
-      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                 vzero, vdf);
-
+      const auto mask_cutoff = _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      const auto mask = _mm512_kand(mask_cutoff, mask_loop);
+      //vdf = _mm512_mask_blend_pd(mask_cutoff, vzero, vdf);
       vdf = _mm512_mask_blend_pd(mask, vzero, vdf);
 
       vpxi = _mm512_fmadd_pd(vdf, vdx, vpxi);
@@ -529,9 +529,9 @@ force_intrin_v2(void) {
       vpyj = _mm512_fnmadd_pd(vdf, vdy, vpyj);
       vpzj = _mm512_fnmadd_pd(vdf, vdz, vpzj);
 
-      _mm512_mask_i32scatter_pd(&px[0], mask, vindex, vpxj, 8);
-      _mm512_mask_i32scatter_pd(&py[0], mask, vindex, vpyj, 8);
-      _mm512_mask_i32scatter_pd(&pz[0], mask, vindex, vpzj, 8);
+      _mm512_mask_i32scatter_pd(&px[0], mask_loop, vindex, vpxj, 8);
+      _mm512_mask_i32scatter_pd(&py[0], mask_loop, vindex, vpyj, 8);
+      _mm512_mask_i32scatter_pd(&pz[0], mask_loop, vindex, vpzj, 8);
 
       vk_idx = _mm512_add_epi64(vk_idx, vpitch);
     } // end of k loop
@@ -638,9 +638,11 @@ force_intrin_v3(void) {
       vr6 = _mm512_mul_pd(_mm512_mul_pd(vr2, vr2), vr2);
       vdf = _mm512_div_pd(_mm512_fmsub_pd(vc24, vr6, vc48),
                           _mm512_mul_pd(_mm512_mul_pd(vr6, vr6), vr2));
-      vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
-                                 vzero, vdf);
-      vdf = _mm512_mask_blend_pd(mask_b, vzero, vdf);
+      auto mask_cutoff= _mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS);
+      //vdf = _mm512_mask_blend_pd(_mm512_cmp_pd_mask(vr2, vcl2, _CMP_LE_OS),
+      //                           vzero, vdf);
+      auto mask_b2 = _mm512_kand(mask_cutoff, mask_b);
+      vdf = _mm512_mask_blend_pd(mask_b2, vzero, vdf);
 
       // send to next
       vindex_a = vindex_b;
