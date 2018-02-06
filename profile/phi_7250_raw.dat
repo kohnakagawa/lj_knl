@@ -1,75 +1,8 @@
 @ Intel(R) Xeon Phi(TM) CPU 7250 @ 1.40GHz
-@ rscgrp=interactive-cache
-
-# AoS
-## density = 1
-N=119164, pair                                            39454 [ms]
-N=119164, sorted                                          33350 [ms]
-N=119164, next                                            29122 [ms]
-N=119164, with scatter & gather                           13026 [ms]
-N=119164, with scatter & gather, remaining loop opt       11085 [ms]
-N=119164, with scatter & gather, remaining loop opt, swp  10056 [ms]
-N=119164, without scatter & gather                        11498 [ms]
-N=119164, without scatter & gather, swp                   11485 [ms]
-N=119164, aos 8 bytes, intrin                             11266 [ms]
-N=119164, aos 8 bytes, intrin, swp                        10070 [ms]
-N=119164, aos 8 bytes, gather and scatter, swp             6905 [ms]
-N=119164, aos 8 bytes, gather and scatter, swp, rcp approx 6584 [ms]
-N=119164, scatter & gather, remaining loop opt, swp, PF    8435 [ms]
-N=119164, scatter & gather, remaining loop opt, swp, PF2   7928 [ms]
-N=119164, aos 8 bytes, gather and scatter, swp, PF         7203 [ms]
-N=119164, with gather, reactless, remaining loop opt       8108 [ms]
-
-## density = 0.5
-N=62500, pair                                             10021 [ms]
-N=62500, sorted                                            8788 [ms]
-N=62500, next                                              7783 [ms]
-N=62500, with scatter & gather                             3576 [ms]
-N=62500, with scatter & gather, remaining loop opt         3513 [ms]
-N=62500, with scatter & gather, remaining loop opt, swp    2950 [ms]
-N=62500, without scatter & gather                          3101 [ms]
-N=62500, without scatter & gather, swp                     3304 [ms]
-N=62500, aos 8 bytes, intrin                               4143 [ms]
-N=62500, aos 8 bytes, intrin, swp                          3787 [ms]
-N=62500, aos 8 bytes, gather and scatter, swp              2442 [ms]
-N=62500, aos 8 bytes, gather and scatter, swp, rcp approx  2328 [ms]
-N=62500, scatter & gather, remaining loop opt, swp, PF     2508 [ms]
-N=62500, scatter & gather, remaining loop opt, swp, PF2    2490 [ms]
-N=62500, aos 8 bytes, gather and scatter, swp, PF          2505 [ms]
-N=62500, with gather, reactless, remaining loop opt        2473 [ms]
-
-# SoA
-## density = 1
-N=119164, pair                                            62015 [ms]
-N=119164, sorted                                          35002 [ms]
-N=119164, next                                            28897 [ms]
-N=119164, with scatter & gather                           12188 [ms]
-N=119164, with scatter & gather, remaining loop opt       10124 [ms]
-N=119164, with scatter & gather, remaining loop opt, swp  10331 [ms]
-
-## density = 0.5
-N=62500, pair                                             14981 [ms]
-N=62500, sorted                                            9354 [ms]
-N=62500, next                                              7912 [ms]
-N=62500, with scatter & gather                             3231 [ms]
-N=62500, with scatter & gather, remaining loop opt         3023 [ms]
-N=62500, with scatter & gather, remaining loop opt, swp    3030 [ms]
-
-@ use restrict pointer
-## density = 1
-N=119164, pair                                            44398 [ms]
-N=119164, sorted                                          11139 [ms]
-N=119164, sorted_2d                                       10701 [ms]
-N=119164, next                                            28991 [ms]
-N=119164, with scatter & gather                           11660 [ms]
-N=119164, with scatter & gather, remaining loop opt        9938 [ms]
-N=119164, with scatter & gather, remaining loop opt, swp  10334 [ms]
-
-## density = 0.5
-N=62500, pair                                             11187 [ms]
-N=62500, sorted                                            3277 [ms]
-N=62500, sorted_2d                                         3125 [ms]
-N=62500, next                                              7656 [ms]
-N=62500, with scatter & gather                             3016 [ms]
-N=62500, with scatter & gather, remaining loop opt         2963 [ms]
-N=62500, with scatter & gather, remaining loop opt, swp    2971 [ms]
+N=119164, scalar::force_pair 39666 [ms]
+N=119164, scalar::force_sorted 33589 [ms]
+N=119164, scalar::force_next 29178 [ms]
+N=119164, knl::avx512::force_intrin 10168 [ms]
+N=119164, knl::avx512::force_intrin_swp 7613 [ms]
+N=119164, knl::avx512::force_intrin_swp_pf 7914 [ms]
+N=119164, knl::avx512::force_intrin_z_swp 6602 [ms]

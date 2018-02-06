@@ -1,0 +1,12 @@
+@ Intel(R) Xeon(R) Gold 6148 CPU @ 2.40GHz
+N=119164, scalar::force_pair 7670 [ms]
+N=119164, scalar::force_sorted 5894 [ms]
+N=119164, scalar::force_next 4883 [ms]
+N=119164, skl::avx512::force_intrin 3168 [ms]
+N=119164, skl::avx512::force_intrin_swp 2668 [ms]
+N=119164, skl::avx512::force_intrin_z 2973 [ms]
+N=119164, skl::avx512::force_intrin_z_swp 2645 [ms]
+N=119164, skl::avx2::force_intrin 2849 [ms]
+N=119164, skl::avx2::force_intrin_swp 2621 [ms]
+N=119164, skl::avx2::force_intrin_z 2630 [ms]
+N=119164, skl::avx2::force_intrin_z_swp 2411 [ms]
